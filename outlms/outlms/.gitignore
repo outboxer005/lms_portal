@@ -1,0 +1,54 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+### Large Binary Files ###
+bin/
+oracleJdk-25/
+data/
+uploads/
+/*.exe
+*.dll
+*.jmod
+*.jar
+*.jsa
+*.db
+.mvn/
+
+### Compiled Files ###
+*.class
+*.classpath
+
+### Build Output ###
+build_output.txt
+compile_output.txt
+compile_errors.log

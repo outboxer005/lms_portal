@@ -1,0 +1,128 @@
+.outer-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.step-circle-container {
+    width: 100%;
+    /* Removed max-width restriction to allow parent to control width */
+}
+
+.step-indicator-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    position: relative;
+    z-index: 10;
+}
+
+.step-content-default {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+}
+
+.step-default {
+    width: 100%;
+    /* Removed padding to let parent control spacing */
+}
+
+.footer-container {
+    width: 100%;
+    margin-top: 1rem;
+}
+
+.footer-nav {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.back-button {
+    transition: all 0.2s ease;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 50px;
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.back-button:hover {
+    background: var(--gray-100);
+    border-color: var(--primary-400);
+}
+
+.next-button {
+    transition: all 0.3s ease;
+    background: var(--primary-600);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 0.85rem 2.5rem;
+    cursor: pointer;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+}
+
+.next-button:hover {
+    transform: scale(1.03);
+    box-shadow: 0 6px 20px rgba(234, 88, 12, 0.4);
+}
+
+.step-indicator {
+    cursor: pointer;
+    position: relative;
+    z-index: 20;
+}
+
+.step-indicator-inner {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 2px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+}
+
+.step-indicator[status="active"] .step-indicator-inner {
+    border-color: var(--primary-500);
+    color: white;
+    box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.2);
+    background: var(--primary-500);
+}
+
+.step-indicator[status="complete"] .step-indicator-inner {
+    border-color: var(--success-500);
+    background: var(--success-500);
+    color: white;
+}
+
+.step-connector {
+    flex: 1;
+    height: 2px;
+    background: var(--border-color);
+    margin: 0 10px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.step-connector-inner {
+    height: 100%;
+    background: #10b981;
+    width: 0;
+    transition: width 0.4s ease;
+}
+
+.step-connector-inner[status="complete"] {
+    width: 100%;
+}
