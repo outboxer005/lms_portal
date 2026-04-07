@@ -139,15 +139,14 @@ const StudentProfile = () => {
                 {/* Tab Content */}
                 {activeTab === 'profile' && (
                     <ProfileTab 
-                        profileData={profileData} 
+                        profileData={profileData}
                         setProfileData={setProfileData}
                         isEditing={isEditing}
                         setIsEditing={setIsEditing}
-                        token={token}
                     />
                 )}
                 {activeTab === 'education' && <EducationTab registration={registration} loading={loadingProfile} />}
-                {activeTab === 'security' && <SecurityTab token={token} />}
+                {activeTab === 'security' && <SecurityTab />}
                 {activeTab === 'documents' && <DocumentsTab registration={registration} loading={loadingProfile} />}
             </div>
         </DashboardLayout>
@@ -155,7 +154,7 @@ const StudentProfile = () => {
 };
 
 // ============= PROFILE TAB =============
-const ProfileTab = ({ profileData, setProfileData, isEditing, setIsEditing, token }) => {
+const ProfileTab = ({ profileData, setProfileData, isEditing, setIsEditing }) => {
     const handleSave = async () => {
         try {
             // Backend integration
@@ -335,7 +334,7 @@ const EducationTab = ({ registration, loading }) => {
 };
 
 // ============= SECURITY TAB =============
-const SecurityTab = ({ token }) => {
+const SecurityTab = () => {
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
 
@@ -491,6 +490,7 @@ const DocumentsTab = ({ registration, loading }) => {
 };
 
 // ============= REUSABLE COMPONENTS =============
+// eslint-disable-next-line no-unused-vars
 const InfoPill = ({ icon: Icon, text }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
         <Icon size={16} />

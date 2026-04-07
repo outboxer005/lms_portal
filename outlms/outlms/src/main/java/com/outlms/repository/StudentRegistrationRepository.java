@@ -1,15 +1,16 @@
 package com.outlms.repository;
 
-import com.outlms.entity.StudentRegistration;
-import com.outlms.entity.StudentRegistration.RegistrationStatus;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
+import com.outlms.entity.StudentRegistration;
+import com.outlms.entity.StudentRegistration.RegistrationStatus;
 
 @Repository
 public interface StudentRegistrationRepository extends JpaRepository<StudentRegistration, Long> {
@@ -24,6 +25,12 @@ public interface StudentRegistrationRepository extends JpaRepository<StudentRegi
     boolean existsByPersonalDetailsEmail(String email);
 
     boolean existsByPersonalDetailsPhone(String phone);
+    
+    /**
+     * Check if email exists with explicit non-null check
+     */
+    @Query("SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END FROM StudentRegistration s WHERE s.personalDetails.email IS NOT NULL AND LOWER(s.personalDetails.email) = LOWER(:email)")
+    boolean emailExists(@Param("email") String email);
 
     List<StudentRegistration> findByStatus(RegistrationStatus status);
 

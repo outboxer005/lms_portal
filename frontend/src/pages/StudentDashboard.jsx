@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
-import { authAPI, libraryAPI, membershipAPI, bookRequestAPI } from '../services/api';
+import { authAPI, libraryAPI, membershipAPI, bookRequestAPI, paymentAPI } from '../services/api';
+import PaymentModal from '../components/PaymentModal';
 import {
     BookOpen, Clock, AlertCircle, Search, Lock, Eye, EyeOff, X,
-    RotateCcw, Filter, Calendar, User, Star, CreditCard, ClipboardList, CheckCircle
+    RotateCcw, Filter, Calendar, User, Star, CreditCard, ClipboardList, CheckCircle, DollarSign, History, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,6 +39,7 @@ const StudentDashboard = () => {
                 {(activeTab === 'search' || activeTab === 'library' || activeTab === 'request-book') && <RequestBookTab />}
                 {activeTab === 'mybooks' && <MyBooks />}
                 {activeTab === 'membership' && <StudentMembershipTab userId={user?.id} />}
+                {activeTab === 'payments' && <StudentPaymentsTab userId={user?.id} />}
                 {activeTab === 'profile' && <SharedProfileTab user={user} role="STUDENT" onPasswordChangeClick={() => setShowPasswordModal(true)} />}
             </div>
         </DashboardLayout>
@@ -127,16 +129,26 @@ const StudentOverview = ({ user }) => {
     const [issuances, setIssuances] = useState([]);
     const [allBooks, setAllBooks] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [unpaidFines, setUnpaidFines] = useState([]);
+    const [paymentHistory, setPaymentHistory] = useState([]);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [selectedPayment, setSelectedPayment] = useState(null);
 
-    useEffect(() => {
+    const loadData = useCallback(() => {
         Promise.all([
             libraryAPI.getMyBooks().catch(() => ({ data: [] })),
             libraryAPI.getBooks().catch(() => ({ data: [] })),
-        ]).then(([myRes, booksRes]) => {
+            paymentAPI.getUnpaidFines().catch(() => ({ data: [] })),
+            paymentAPI.getPaymentHistory().catch(() => ({ data: [] })),
+        ]).then(([myRes, booksRes, finesRes, histRes]) => {
             setIssuances(myRes.data || []);
             setAllBooks(booksRes.data || []);
+            setUnpaidFines(finesRes.data || []);
+            setPaymentHistory(histRes.data || []);
         }).finally(() => setLoading(false));
     }, []);
+
+    useEffect(() => { loadData(); }, [loadData]);
 
     const active = issuances.filter(i => i.status === 'ISSUED');
     const now = new Date();
@@ -145,9 +157,32 @@ const StudentOverview = ({ user }) => {
         const d = new Date(i.dueDate); return d >= now && (d - now) / 86400000 <= 3;
     });
     const returned = issuances.filter(i => i.status === 'RETURNED');
+    const totalUnpaid = unpaidFines.reduce((s, f) => s + (f.penaltyAmount || 0), 0);
+
+    const openPayFine = (issuance) => {
+        setSelectedPayment({
+            paymentType: 'FINE_PAYMENT',
+            amount: issuance.penaltyAmount,
+            referenceId: issuance.id,
+            description: `Late fine for "${issuance.book?.title}"`,
+            userName: user ? `${user.firstName} ${user.lastName}` : '',
+            userEmail: user?.email || '',
+        });
+        setShowPaymentModal(true);
+    };
 
     return (
         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            {/* Payment Modal */}
+            {showPaymentModal && selectedPayment && (
+                <PaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    paymentData={selectedPayment}
+                    onSuccess={() => { loadData(); toast.success('Fine paid! You can now borrow books.'); }}
+                />
+            )}
+
             {/* Welcome Banner */}
             <GlassCard style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, rgba(96,165,250,0.12) 0%, rgba(168,85,247,0.12) 100%)', border: '1px solid rgba(96,165,250,0.3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
@@ -178,6 +213,40 @@ const StudentOverview = ({ user }) => {
 
             {/* Membership Widget */}
             <MembershipWidget userId={user?.id} />
+
+            {/* Unpaid Fines Alert */}
+            {unpaidFines.length > 0 && (
+                <GlassCard style={{ marginBottom: '1.5rem', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                        <DollarSign size={22} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                        <div style={{ flex: 1 }}>
+                            <h4 style={{ margin: '0 0 0.25rem', color: '#dc2626', fontSize: '1rem', fontWeight: '700' }}>
+                                Unpaid Fines — Total: ₹{totalUnpaid.toFixed(2)}
+                            </h4>
+                            <p style={{ margin: '0 0 0.85rem', color: '#fca5a5', fontSize: '0.85rem' }}>
+                                You have {unpaidFines.length} unpaid fine(s). Pay before borrowing new books.
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                {unpaidFines.map(issuance => (
+                                    <div key={issuance.id} style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1.25rem', flex: '1 1 auto', minWidth: '240px' }}>
+                                        <div>
+                                            <div style={{ fontWeight: '600', color: '#dc2626', fontSize: '0.88rem' }}>{issuance.book?.title}</div>
+                                            <div style={{ color: '#fca5a5', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                                                Returned: {issuance.returnDate} · Fine: ₹{issuance.penaltyAmount}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => openPayFine(issuance)}
+                                            style={{ padding: '0.5rem 1rem', background: '#dc2626', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                            Pay ₹{issuance.penaltyAmount}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </GlassCard>
+            )}
 
             {/* Overdue Alert */}
             {overdue.length > 0 && (
@@ -281,6 +350,48 @@ const StudentOverview = ({ user }) => {
                     ) : <EmptyState icon={Search} message="Library catalog is empty" />}
                 </GlassCard>
             </div>
+
+            {/* Payment History */}
+            {paymentHistory.length > 0 && (
+                <GlassCard style={{ marginTop: '1.5rem' }}>
+                    <h3 style={{ margin: '0 0 1.25rem', fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <History size={18} /> Recent Payment History
+                    </h3>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px', minWidth: 500 }}>
+                            <thead>
+                                <tr style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', textAlign: 'left' }}>
+                                    {['Receipt ID', 'Type', 'Description', 'Amount', 'Status', 'Date'].map(h => (
+                                        <th key={h} style={{ padding: '0.4rem 1rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paymentHistory.slice(0, 10).map(p => (
+                                    <tr key={p.id} style={{ background: 'var(--accent-subtle)' }}>
+                                        <td style={{ padding: '0.65rem 1rem', borderRadius: '8px 0 0 8px', fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{p.receiptId}</td>
+                                        <td style={{ padding: '0.65rem 1rem', fontSize: '0.82rem' }}>
+                                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', background: p.paymentType === 'FINE_PAYMENT' ? 'rgba(239,68,68,0.12)' : 'rgba(96,165,250,0.12)', color: p.paymentType === 'FINE_PAYMENT' ? '#ef4444' : '#60a5fa' }}>
+                                                {p.paymentType === 'FINE_PAYMENT' ? 'Fine' : 'Membership'}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '0.65rem 1rem', color: 'var(--text-secondary)', fontSize: '0.82rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || '—'}</td>
+                                        <td style={{ padding: '0.65rem 1rem', fontWeight: '700', color: '#10b981', fontSize: '0.95rem' }}>₹{p.amount}</td>
+                                        <td style={{ padding: '0.65rem 1rem' }}>
+                                            <span style={{ padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', background: p.status === 'SUCCESS' ? 'rgba(16,185,129,0.15)' : p.status === 'PENDING' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.status === 'SUCCESS' ? '#10b981' : p.status === 'PENDING' ? '#f59e0b' : '#ef4444' }}>
+                                                {p.status}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '0.65rem 1rem', borderRadius: '0 8px 8px 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                                            {p.paymentDate ? new Date(p.paymentDate).toLocaleDateString() : new Date(p.createdAt).toLocaleDateString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </GlassCard>
+            )}
         </div>
     );
 };
@@ -459,11 +570,14 @@ const SearchBooks = () => {
 // MY BOOKS — with rating feature for returned books
 // ============================================================
 const MyBooks = () => {
+    const { user } = useAuth();
     const [issuances, setIssuances] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
     const [ratingModal, setRatingModal] = useState(null);
     const [myRatings, setMyRatings] = useState({});
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [selectedPayment, setSelectedPayment] = useState(null);
 
     const load = async () => {
         try {
@@ -485,6 +599,23 @@ const MyBooks = () => {
 
     useEffect(() => { load(); }, []);
 
+    const openPayFine = (issuance) => {
+        const amount = issuance.penaltyAmount || 0;
+        if (amount <= 0) {
+            toast.error('No payable fine found for this issuance');
+            return;
+        }
+        setSelectedPayment({
+            paymentType: 'FINE_PAYMENT',
+            amount,
+            referenceId: issuance.id,
+            description: `Late fine for "${issuance.book?.title}"`,
+            userName: user ? `${user.firstName} ${user.lastName}` : '',
+            userEmail: user?.email || '',
+        });
+        setShowPaymentModal(true);
+    };
+
     const now = new Date();
     const filtered = issuances.filter(i => filter === 'ALL' ? true : i.status === filter);
     const activeCount = issuances.filter(i => i.status === 'ISSUED').length;
@@ -494,6 +625,18 @@ const MyBooks = () => {
 
     return (
         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            {showPaymentModal && selectedPayment && (
+                <PaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    paymentData={selectedPayment}
+                    onSuccess={() => {
+                        load();
+                        toast.success('Fine paid successfully!');
+                    }}
+                />
+            )}
+
             {/* Summary Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <StatCard label="Active Borrows" value={activeCount} icon={BookOpen} color="#60a5fa" />
@@ -548,7 +691,26 @@ const MyBooks = () => {
                                                     <td style={tdStyle}><DateBadge value={i.dueDate} danger={isOverdue} /></td>
                                                     <td style={tdStyle}><DateBadge value={i.returnDate} empty="—" /></td>
                                                     <td style={tdStyle}><StatusBadge status={i.status} overdue={isOverdue} /></td>
-                                                    <td style={tdStyle}><span style={{ fontWeight: '700', color: penalty > 0 ? '#ef4444' : 'var(--text-secondary)' }}>{penalty > 0 ? `₹${penalty}` : '—'}</span></td>
+                                                    <td style={tdStyle}>
+                                                        {penalty > 0 ? (
+                                                            i.isPenaltyPaid ? (
+                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                                    <span style={{ fontWeight: '700', color: '#10b981' }}>₹{penalty}</span>
+                                                                    <span style={{ padding: '0.15rem 0.45rem', borderRadius: '6px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.72rem', fontWeight: '700' }}>
+                                                                        PAID
+                                                                    </span>
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => openPayFine(i)}
+                                                                    style={{ padding: '0.32rem 0.75rem', background: '#dc2626', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}>
+                                                                    Pay ₹{penalty}
+                                                                </button>
+                                                            )
+                                                        ) : (
+                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>—</span>
+                                                        )}
+                                                    </td>
                                                     <td style={tdStyle}>
                                                         {i.status === 'RETURNED' ? (
                                                             myRating ? (
@@ -723,7 +885,11 @@ const AnimatedCounter = ({ value, duration = 1.5 }) => {
     useEffect(() => {
         let start = 0;
         const end = parseInt(value, 10);
-        if (isNaN(end)) { setCount(value); return; }
+        if (isNaN(end)) { 
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setCount(value); 
+            return; 
+        }
 
         const incrementTime = (duration / end) * 1000;
         let timer = setInterval(() => {
@@ -746,6 +912,7 @@ const GlassCard = ({ children, style = {} }) => (
     </div>
 );
 
+// eslint-disable-next-line no-unused-vars
 const StatCard = ({ label, value, icon: Icon, color, sub, isText }) => (
     <GlassCard>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -761,6 +928,7 @@ const StatCard = ({ label, value, icon: Icon, color, sub, isText }) => (
     </GlassCard>
 );
 
+// eslint-disable-next-line no-unused-vars
 const EmptyState = ({ icon: Icon, message, sub }) => (
     <div style={{ padding: '3rem', textAlign: 'center' }}>
         <div style={{ width: 56, height: 56, borderRadius: '16px', background: 'var(--accent-subtle)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'var(--text-secondary)' }}>
@@ -869,9 +1037,9 @@ export const SharedProfileTab = ({ user, role, onPasswordChangeClick }) => {
 // ============================================================
 const MembershipWidget = ({ userId }) => {
     const [membership, setMembership] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!userId);
     useEffect(() => {
-        if (!userId) { setLoading(false); return; }
+        if (!userId) return;
         membershipAPI.getActiveMembership(userId)
             .then(r => setMembership(r.data))
             .catch(() => setMembership(null))
@@ -1170,27 +1338,131 @@ const RequestBookTab = () => {
 // MEMBERSHIP PAGE (STUDENT)
 // ============================================================
 const StudentMembershipTab = ({ userId }) => {
+    const { user } = useAuth();
     const [membership, setMembership] = useState(null);
+    const [unpaidMemberships, setUnpaidMemberships] = useState([]);
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentData, setPaymentData] = useState(null);
     const tierColors = { BASIC: '#60a5fa', STANDARD: '#a855f7', PREMIUM: '#f59e0b', UNLIMITED: '#10b981' };
     const tierIcons = { BASIC: '🎓', STANDARD: '⭐', PREMIUM: '🏆', UNLIMITED: '♾️' };
 
-    useEffect(() => {
-        if (!userId) { setLoading(false); return; }
+    const loadMembership = useCallback(() => {
+        if (!userId) {
+            setMembership(null);
+            setPlans([]);
+            setUnpaidMemberships([]);
+            return;
+        }
+        setLoading(true);
         Promise.all([
-            membershipAPI.getActiveMembership(userId).catch(() => ({ data: null })),
+            membershipAPI.getMyLatestMembership().catch(() => ({ data: null })),
             membershipAPI.getActivePlans().catch(() => ({ data: [] })),
-        ]).then(([mRes, pRes]) => {
+            paymentAPI.getUnpaidMemberships().catch(() => ({ data: [] })),
+        ]).then(([mRes, pRes, unpaidRes]) => {
             setMembership(mRes.data || null);
             setPlans(pRes.data || []);
+            const unpaid = Array.isArray(unpaidRes?.data) ? unpaidRes.data : [];
+            setUnpaidMemberships(unpaid);
         }).finally(() => setLoading(false));
     }, [userId]);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    useEffect(() => { loadMembership(); }, [loadMembership]);
+
+    const handlePayMembership = (targetMembership = membership) => {
+        if (!targetMembership?.id) {
+            toast.error('No pending membership found to pay');
+            return;
+        }
+        const amount = targetMembership.plan?.monthlyFee || 0;
+        if (amount <= 0) {
+            toast.error('Selected plan does not require payment');
+            return;
+        }
+        setPaymentData({
+            paymentType: 'MEMBERSHIP_PAYMENT',
+            amount,
+            referenceId: targetMembership.id,
+            description: `Membership fee for ${targetMembership.plan?.name} plan`,
+            userName: user ? `${user.firstName} ${user.lastName}` : '',
+            userEmail: user?.email || '',
+        });
+        setShowPaymentModal(true);
+    };
+
     if (loading) return <Spinner />;
+
+    const pendingMemberships = unpaidMemberships.length
+        ? unpaidMemberships
+        : (membership && membership.status === 'SUSPENDED' && !membership.isPaymentCompleted ? [membership] : []);
+    const isPendingPayment = pendingMemberships.length > 0;
+    const primaryPendingMembership = pendingMemberships[0] || null;
 
     return (
         <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            {showPaymentModal && paymentData && (
+                <PaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    paymentData={paymentData}
+                    onSuccess={() => { loadMembership(); toast.success('Membership activated!'); }}
+                />
+            )}
+
+            {/* Pending Payment Banner */}
+            {isPendingPayment && (
+                <GlassCard style={{ marginBottom: '1.5rem', background: 'rgba(245,158,11,0.08)', border: '2px solid rgba(245,158,11,0.5)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <CreditCard size={22} color="#f59e0b" />
+                            </div>
+                            <div>
+                                <h4 style={{ margin: '0 0 0.2rem', color: '#f59e0b', fontSize: '1rem', fontWeight: '700' }}>
+                                    Payment Required — {primaryPendingMembership?.plan?.name}
+                                </h4>
+                                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                    Complete payment to activate your <strong>{primaryPendingMembership?.plan?.tier}</strong> membership plan.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => handlePayMembership(primaryPendingMembership)}
+                            style={{ padding: '0.75rem 1.75rem', background: '#f59e0b', border: 'none', borderRadius: '10px', color: '#000', fontWeight: '800', cursor: 'pointer', fontSize: '0.95rem' }}>
+                            Pay ₹{primaryPendingMembership?.plan?.monthlyFee || 0} to Activate
+                        </button>
+                    </div>
+                </GlassCard>
+            )}
+
+            {/* Pending Membership Dues */}
+            {pendingMemberships.length > 1 && (
+                <GlassCard style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                        Pending Membership Dues
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {pendingMemberships.map(pm => (
+                            <div key={pm.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.85rem 1rem', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--accent-subtle)' }}>
+                                <div>
+                                    <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.9rem' }}>{pm.plan?.name}</div>
+                                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                        Status: {pm.status} • Start: {pm.startDate || '—'}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handlePayMembership(pm)}
+                                    style={{ padding: '0.45rem 0.85rem', background: '#f59e0b', border: 'none', borderRadius: '8px', color: '#111827', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    Pay ₹{pm.plan?.monthlyFee || 0}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </GlassCard>
+            )}
+
             {/* Current Membership Card */}
             <GlassCard style={{ marginBottom: '1.5rem', background: membership ? 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, rgba(168,85,247,0.08) 100%)' : undefined, border: membership ? `2px solid ${tierColors[membership.plan?.tier] || 'var(--primary-500)'}40` : '1px solid var(--border-color)' }}>
                 <h2 style={{ margin: '0 0 1.25rem', fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1203,8 +1475,17 @@ const StudentMembershipTab = ({ userId }) => {
                             <div style={{ fontSize: '1.8rem', fontWeight: '900', color: tierColors[membership.plan?.tier] || 'var(--primary-500)', marginBottom: '0.5rem' }}>{membership.plan?.name}</div>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 <span style={{ padding: '0.25rem 0.7rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700', background: `${tierColors[membership.plan?.tier] || '#60a5fa'}25`, color: tierColors[membership.plan?.tier] || '#60a5fa' }}>{membership.plan?.tier}</span>
-                                <span style={{ padding: '0.25rem 0.7rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700', background: membership.status === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', color: membership.status === 'ACTIVE' ? '#10b981' : '#ef4444' }}>{membership.status}</span>
+                                <span style={{ padding: '0.25rem 0.7rem', borderRadius: '8px', fontSize: '0.78rem', fontWeight: '700',
+                                    background: membership.status === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : membership.status === 'SUSPENDED' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                                    color: membership.status === 'ACTIVE' ? '#10b981' : membership.status === 'SUSPENDED' ? '#f59e0b' : '#ef4444' }}>
+                                    {membership.status === 'SUSPENDED' && !membership.isPaymentCompleted ? 'PAYMENT PENDING' : membership.status}
+                                </span>
                             </div>
+                            {membership.plan?.monthlyFee > 0 && (
+                                <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                    Monthly Fee: <strong style={{ color: 'var(--text-main)' }}>₹{membership.plan.monthlyFee}</strong>
+                                </div>
+                            )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', justifyContent: 'center' }}>
                             {[
@@ -1212,6 +1493,7 @@ const StudentMembershipTab = ({ userId }) => {
                                 { icon: Clock, color: '#f59e0b', label: `${membership.plan?.loanDurationDays} Days`, sub: 'Standard loan duration' },
                                 { icon: RotateCcw, color: '#a855f7', label: `${membership.plan?.maxRenewals} Renewals`, sub: 'Allowed per book' },
                                 { icon: Star, color: '#10b981', label: ['STANDARD', 'PREMIUM', 'UNLIMITED'].includes(membership.plan?.tier) ? 'Yes' : 'No', sub: 'Premium book access' },
+                            // eslint-disable-next-line no-unused-vars
                             ].map(({ icon: Icon, color, label, sub }) => (
                                 <div key={sub} style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
                                     <div style={{ width: 40, height: 40, borderRadius: '10px', background: `${color}18`, color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={18} /></div>
@@ -1243,15 +1525,19 @@ const StudentMembershipTab = ({ userId }) => {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
                         {plans.map(p => {
                             const isActive = membership?.plan?.id === p.id && membership?.status === 'ACTIVE';
+                            const isPending = membership?.plan?.id === p.id && membership?.status === 'SUSPENDED';
                             return (
                                 <div key={p.id} style={{
                                     padding: '1.25rem', borderRadius: '16px',
-                                    background: isActive ? `${tierColors[p.tier] || '#60a5fa'}12` : 'var(--accent-subtle)',
-                                    border: `2px solid ${isActive ? (tierColors[p.tier] || 'var(--primary-500)') : 'var(--border-color)'}${isActive ? '' : '40'}`,
+                                    background: isActive ? `${tierColors[p.tier] || '#60a5fa'}12` : isPending ? 'rgba(245,158,11,0.08)' : 'var(--accent-subtle)',
+                                    border: `2px solid ${isActive ? (tierColors[p.tier] || 'var(--primary-500)') : isPending ? 'rgba(245,158,11,0.5)' : 'var(--border-color)'}${isActive || isPending ? '' : '40'}`,
                                     position: 'relative', transition: 'all 0.2s'
                                 }}>
                                     {isActive && (
                                         <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: '6px', background: 'rgba(16,185,129,0.18)', color: '#10b981', fontSize: '0.7rem', fontWeight: '800' }}>YOUR PLAN</div>
+                                    )}
+                                    {isPending && (
+                                        <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: '6px', background: 'rgba(245,158,11,0.18)', color: '#f59e0b', fontSize: '0.7rem', fontWeight: '800' }}>PAYMENT DUE</div>
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.85rem' }}>
                                         <span style={{ fontSize: '1.5rem' }}>{tierIcons[p.tier] || '📋'}</span>
@@ -1265,6 +1551,7 @@ const StudentMembershipTab = ({ userId }) => {
                                         <span>🕐 <strong style={{ color: 'var(--text-main)' }}>{p.loanDurationDays}</strong> day loan duration</span>
                                         <span>🔄 <strong style={{ color: 'var(--text-main)' }}>{p.maxRenewals}</strong> renewals per book</span>
                                         <span>⭐ Premium books: <strong style={{ color: ['STANDARD', 'PREMIUM', 'UNLIMITED'].includes(p.tier) ? '#10b981' : '#ef4444' }}>{['STANDARD', 'PREMIUM', 'UNLIMITED'].includes(p.tier) ? 'Yes' : 'No'}</strong></span>
+                                        {p.monthlyFee > 0 && <span>💳 Fee: <strong style={{ color: 'var(--text-main)' }}>₹{p.monthlyFee}/month</strong></span>}
                                     </div>
                                     {p.description && <p style={{ margin: '0.75rem 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{p.description}</p>}
                                 </div>
@@ -1275,6 +1562,281 @@ const StudentMembershipTab = ({ userId }) => {
                 <p style={{ margin: '1.25rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
                     To change or get a membership plan, please contact the library staff.
                 </p>
+            </GlassCard>
+        </div>
+    );
+};
+
+// ============================================================
+// STUDENT PAYMENTS PAGE
+// ============================================================
+const StudentPaymentsTab = ({ userId }) => {
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [assigningPlanId, setAssigningPlanId] = useState(null);
+    const [unpaidMemberships, setUnpaidMemberships] = useState([]);
+    const [unpaidFines, setUnpaidFines] = useState([]);
+    const [history, setHistory] = useState([]);
+    const [availablePlans, setAvailablePlans] = useState([]);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentData, setPaymentData] = useState(null);
+
+    const loadData = useCallback(() => {
+        if (!userId) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        Promise.all([
+            paymentAPI.getUnpaidMemberships().catch(() => ({ data: [] })),
+            paymentAPI.getUnpaidFines().catch(() => ({ data: [] })),
+            paymentAPI.getPaymentHistory().catch(() => ({ data: [] })),
+            membershipAPI.getActivePlans().catch(() => ({ data: [] })),
+        ]).then(([membershipRes, finesRes, historyRes, plansRes]) => {
+            setUnpaidMemberships(Array.isArray(membershipRes?.data) ? membershipRes.data : []);
+            setUnpaidFines(Array.isArray(finesRes?.data) ? finesRes.data : []);
+            setHistory(Array.isArray(historyRes?.data) ? historyRes.data : []);
+            setAvailablePlans(Array.isArray(plansRes?.data) ? plansRes.data : []);
+        }).finally(() => setLoading(false));
+    }, [userId]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const startMembershipPayment = (membership) => {
+        const amount = membership?.plan?.monthlyFee || 0;
+        if (!membership?.id || amount <= 0) {
+            toast.error('Invalid membership payment details');
+            return;
+        }
+        setPaymentData({
+            paymentType: 'MEMBERSHIP_PAYMENT',
+            amount,
+            referenceId: membership.id,
+            description: `Membership fee for ${membership.plan?.name} plan`,
+            userName: user ? `${user.firstName} ${user.lastName}` : '',
+            userEmail: user?.email || '',
+        });
+        setShowPaymentModal(true);
+    };
+
+    const startFinePayment = (issuance) => {
+        const amount = issuance?.penaltyAmount || 0;
+        if (!issuance?.id || amount <= 0) {
+            toast.error('Invalid fine payment details');
+            return;
+        }
+        setPaymentData({
+            paymentType: 'FINE_PAYMENT',
+            amount,
+            referenceId: issuance.id,
+            description: `Late fine for "${issuance.book?.title}"`,
+            userName: user ? `${user.firstName} ${user.lastName}` : '',
+            userEmail: user?.email || '',
+        });
+        setShowPaymentModal(true);
+    };
+
+    const handleSelectPlanAndContinue = async (plan) => {
+        if (!plan?.id) {
+            toast.error('Invalid plan selection');
+            return;
+        }
+
+        const existingUnpaid = unpaidMemberships.find(m => m.plan?.id === plan.id);
+        if (existingUnpaid) {
+            startMembershipPayment(existingUnpaid);
+            return;
+        }
+
+        try {
+            setAssigningPlanId(plan.id);
+            const res = await membershipAPI.selfAssignMembership({
+                planId: plan.id,
+                notes: 'Self-selected from payment page',
+            });
+            const createdMembership = res?.data;
+
+            if (!createdMembership?.id) {
+                throw new Error('Membership assignment failed');
+            }
+
+            if ((createdMembership.plan?.monthlyFee || 0) > 0) {
+                toast.success('Membership selected. Complete payment to activate it.');
+                startMembershipPayment(createdMembership);
+            } else {
+                toast.success('Membership activated successfully. No payment required for this plan.');
+            }
+
+            loadData();
+        } catch (err) {
+            toast.error(err.response?.data?.message || err.response?.data || 'Failed to select membership plan');
+        } finally {
+            setAssigningPlanId(null);
+        }
+    };
+
+    const membershipDueTotal = unpaidMemberships.reduce((sum, m) => sum + (m?.plan?.monthlyFee || 0), 0);
+    const fineDueTotal = unpaidFines.reduce((sum, f) => sum + (f?.penaltyAmount || 0), 0);
+    const totalDue = membershipDueTotal + fineDueTotal;
+
+    if (loading) return <Spinner />;
+
+    return (
+        <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            {showPaymentModal && paymentData && (
+                <PaymentModal
+                    isOpen={showPaymentModal}
+                    onClose={() => setShowPaymentModal(false)}
+                    paymentData={paymentData}
+                    onSuccess={() => {
+                        loadData();
+                        toast.success('Payment recorded successfully');
+                    }}
+                />
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <StatCard label="Total Due" value={`₹${totalDue.toFixed(2)}`} icon={DollarSign} color="#ef4444" isText />
+                <StatCard label="Membership Due" value={`₹${membershipDueTotal.toFixed(2)}`} icon={CreditCard} color="#f59e0b" isText />
+                <StatCard label="Fine Due" value={`₹${fineDueTotal.toFixed(2)}`} icon={AlertCircle} color="#dc2626" isText />
+                <StatCard label="Paid Transactions" value={history.filter(h => h.status === 'SUCCESS').length} icon={CheckCircle} color="#10b981" />
+            </div>
+
+            <GlassCard style={{ marginBottom: '1.5rem', background: totalDue > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${totalDue > 0 ? 'rgba(245,158,11,0.35)' : 'rgba(16,185,129,0.35)'}` }}>
+                <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <CreditCard size={19} /> Payment Center
+                </h2>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    {totalDue > 0
+                        ? `You have pending dues of ₹${totalDue.toFixed(2)}. Complete your payments to keep your account fully active.`
+                        : 'No outstanding dues right now. Your account is clear.'}
+                </p>
+            </GlassCard>
+
+            <GlassCard style={{ marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                        Membership Selection and Payment
+                    </h3>
+                    <button onClick={loadData} style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.4rem 0.65rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <RefreshCw size={14} /> Refresh
+                    </button>
+                </div>
+
+                {unpaidMemberships.length === 0 ? (
+                    <div style={{ padding: '1rem', borderRadius: '10px', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.86rem' }}>
+                        No unpaid memberships found. Select a plan below to auto-assign membership and continue to payment.
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {unpaidMemberships.map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.85rem 1rem', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--accent-subtle)' }}>
+                                <div>
+                                    <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.92rem' }}>{m.plan?.name} ({m.plan?.tier})</div>
+                                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                                        Allowance: {m.plan?.bookAllowance} books • Duration: {m.plan?.loanDurationDays} days • Status: {m.status}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => startMembershipPayment(m)}
+                                    style={{ padding: '0.5rem 0.9rem', border: 'none', borderRadius: '8px', background: '#f59e0b', color: '#111827', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    Pay ₹{m.plan?.monthlyFee || 0}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {availablePlans.length > 0 && (
+                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '0.55rem' }}>
+                            Available plans. Select a plan to auto-assign and continue with payment.
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.7rem' }}>
+                            {availablePlans.map(p => (
+                                <div key={p.id} style={{ padding: '0.85rem', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--accent-subtle)' }}>
+                                    <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '0.9rem' }}>{p.name}</div>
+                                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                                        {p.tier} • {p.bookAllowance} books • {p.loanDurationDays} days
+                                    </div>
+                                    <div style={{ marginTop: '0.45rem', fontSize: '0.86rem', color: 'var(--text-main)', fontWeight: '700' }}>
+                                        ₹{p.monthlyFee || 0}/month
+                                    </div>
+                                    <button
+                                        disabled={assigningPlanId === p.id}
+                                        onClick={() => handleSelectPlanAndContinue(p)}
+                                        style={{ marginTop: '0.6rem', width: '100%', padding: '0.45rem 0.65rem', border: 'none', borderRadius: '8px', background: 'var(--primary-500)', color: '#fff', fontWeight: '700', fontSize: '0.8rem', cursor: assigningPlanId === p.id ? 'not-allowed' : 'pointer', opacity: assigningPlanId === p.id ? 0.7 : 1 }}>
+                                        {assigningPlanId === p.id ? 'Assigning...' : 'Select Plan and Continue'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </GlassCard>
+
+            <GlassCard style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ margin: '0 0 1rem', fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                    Fine Payment
+                </h3>
+                {unpaidFines.length === 0 ? (
+                    <EmptyState icon={CheckCircle} message="No unpaid fines" sub="Great, you do not have any pending late fee." />
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+                        {unpaidFines.map(f => (
+                            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+                                <div>
+                                    <div style={{ fontWeight: '700', color: '#dc2626', fontSize: '0.9rem' }}>{f.book?.title}</div>
+                                    <div style={{ color: '#fca5a5', fontSize: '0.78rem' }}>Returned: {f.returnDate || '—'} • Issuance #{f.id}</div>
+                                </div>
+                                <button
+                                    onClick={() => startFinePayment(f)}
+                                    style={{ padding: '0.5rem 0.9rem', border: 'none', borderRadius: '8px', background: '#dc2626', color: '#fff', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    Pay ₹{f.penaltyAmount || 0}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </GlassCard>
+
+            <GlassCard>
+                <h3 style={{ margin: '0 0 1rem', fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <History size={17} /> Payment History
+                </h3>
+                {history.length === 0 ? (
+                    <EmptyState icon={History} message="No payment history" sub="Your completed and pending payments will appear here." />
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 7px', minWidth: 640 }}>
+                            <thead>
+                                <tr style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', textAlign: 'left' }}>
+                                    {['Receipt', 'Type', 'Description', 'Amount', 'Status', 'Date'].map(h => (
+                                        <th key={h} style={{ padding: '0.45rem 0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {history.map(p => (
+                                    <tr key={p.id} style={{ background: 'var(--accent-subtle)' }}>
+                                        <td style={{ padding: '0.65rem 0.85rem', borderRadius: '8px 0 0 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.78rem' }}>{p.receiptId || '-'}</td>
+                                        <td style={{ padding: '0.65rem 0.85rem', color: 'var(--text-main)', fontSize: '0.82rem' }}>{p.paymentType === 'FINE_PAYMENT' ? 'Fine' : 'Membership'}</td>
+                                        <td style={{ padding: '0.65rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{p.description || '—'}</td>
+                                        <td style={{ padding: '0.65rem 0.85rem', color: '#10b981', fontWeight: '700' }}>₹{p.amount}</td>
+                                        <td style={{ padding: '0.65rem 0.85rem' }}>
+                                            <span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', background: p.status === 'SUCCESS' ? 'rgba(16,185,129,0.15)' : p.status === 'PENDING' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.status === 'SUCCESS' ? '#10b981' : p.status === 'PENDING' ? '#f59e0b' : '#ef4444' }}>
+                                                {p.status}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '0.65rem 0.85rem', borderRadius: '0 8px 8px 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                                            {p.paymentDate ? new Date(p.paymentDate).toLocaleDateString() : new Date(p.createdAt).toLocaleDateString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </GlassCard>
         </div>
     );

@@ -1,21 +1,26 @@
 package com.outlms.service;
 
-import com.outlms.dto.StudentRegistrationRequest;
-import com.outlms.entity.AcademicInfo;
-import com.outlms.entity.StudentRegistration;
-import com.outlms.entity.WorkExperience;
-import com.outlms.entity.StudentRegistration.RegistrationStatus;
-import com.outlms.repository.StudentRegistrationRepository;
-import lombok.RequiredArgsConstructor;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.Year;
+import java.util.List;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.Year;
-import java.util.List;
+import com.outlms.dto.StudentRegistrationRequest;
+import com.outlms.entity.AcademicInfo;
+import com.outlms.entity.StudentRegistration;
+import com.outlms.entity.StudentRegistration.RegistrationStatus;
+import com.outlms.entity.User;
+import com.outlms.entity.WorkExperience;
+import com.outlms.repository.NotificationRepository;
+import com.outlms.repository.StudentRegistrationRepository;
+import com.outlms.repository.UserRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +30,8 @@ public class StudentRegistrationService {
     private final StudentRegistrationRepository registrationRepository;
     private final FileStorageService fileStorageService;
     private final EmailService emailService;
+    private final NotificationRepository notificationRepository;
+    private final UserRepository userRepository;
 
     /**
      * Register a new student with document upload
@@ -34,7 +41,14 @@ public class StudentRegistrationService {
 
         // Validate unique email (check both pending and approved registrations)
         String email = request.getPersonalDetails().getEmail();
-        if (registrationRepository.existsByPersonalDetailsEmail(email)) {
+        
+        // Validate email is not empty
+        if (email == null || email.trim().isEmpty()) {
+            throw new RuntimeException("Email is required and cannot be empty.");
+        }
+        
+        // Check if email already exists (with explicit null check in query)
+        if (registrationRepository.emailExists(email.trim())) {
             throw new RuntimeException("This email is already registered. Please use a different email or contact admin if you believe this is an error.");
         }
 
@@ -114,6 +128,18 @@ public class StudentRegistrationService {
 
         // Send confirmation email
         emailService.sendRegistrationConfirmation(registration);
+
+        // Send in-app notification to all admins
+        List<User> admins = userRepository.findByRoleAndActiveTrue(User.Role.ADMIN);
+        for (User admin : admins) {
+            com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+            notification.setUser(admin);
+            notification.setTitle("New Registration Request");
+            notification.setMessage("A new " + (request.getRole() != null ? request.getRole().toLowerCase() : "user") + 
+                                  " (" + request.getPersonalDetails().getFirstName() + " " + request.getPersonalDetails().getLastName() + 
+                                  ") has registered and is pending approval.");
+            notificationRepository.save(notification);
+        }
 
         return registration;
     }

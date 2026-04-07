@@ -12,6 +12,7 @@ import com.outlms.entity.MembershipPlan;
 import com.outlms.repository.BookIssuanceRepository;
 import com.outlms.repository.BookRepository;
 import com.outlms.repository.UserRepository;
+import com.outlms.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ public class BookService {
     private final UserRepository userRepository;
     private final MembershipService membershipService;
     private final EmailService emailService;
+    private final NotificationRepository notificationRepository;
 
     // ============= BOOK CRUD =============
 
@@ -165,6 +167,17 @@ public class BookService {
         User issuedBy = userRepository.findById(Objects.requireNonNull(issuedById))
                 .orElseThrow(() -> new RuntimeException("Staff/Admin user not found"));
 
+        // Check for unpaid fines before issuing new books
+        List<BookIssuance> unpaidFines = issuanceRepository
+                .findUnpaidFinesByStudent(student.getId(), 0.0);
+        if (!unpaidFines.isEmpty()) {
+            double totalUnpaid = unpaidFines.stream()
+                    .mapToDouble(BookIssuance::getPenaltyAmount)
+                    .sum();
+            throw new RuntimeException("Cannot issue new books. Student has unpaid fines totaling Rs. " + totalUnpaid +
+                    ". Please pay all fines before issuing new books.");
+        }
+
         // Check current active issuances for this student
         List<BookIssuance> existing = issuanceRepository.findByStudentIdAndStatus(
                 student.getId(),
@@ -214,6 +227,14 @@ public class BookService {
         BookIssuance saved = issuanceRepository.save(issuance);
         // Notify student by email (async)
         emailService.sendBookIssuedEmail(saved);
+
+        // Send in-app notification to student
+        com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+        notification.setUser(student);
+        notification.setTitle("Book Issued");
+        notification.setMessage("The book '" + book.getTitle() + "' has been issued to you. Due date: " + saved.getDueDate());
+        notificationRepository.save(notification);
+
         return saved;
     }
 
@@ -241,6 +262,9 @@ public class BookService {
         if (LocalDate.now().isAfter(issuance.getDueDate())) {
             long daysLate = ChronoUnit.DAYS.between(issuance.getDueDate(), LocalDate.now());
             issuance.setPenaltyAmount(daysLate * 5.0);
+            issuance.setIsPenaltyPaid(false);  // Mark as unpaid
+        } else {
+            issuance.setIsPenaltyPaid(true);  // No penalty, mark as paid
         }
 
         // Increment available copies
@@ -251,6 +275,18 @@ public class BookService {
         BookIssuance saved = issuanceRepository.save(issuance);
         // Notify student by email (async) including penalty info
         emailService.sendBookReturnedEmail(saved);
+
+        // Send in-app notification to student
+        com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+        notification.setUser(issuance.getStudent());
+        notification.setTitle("Book Returned");
+        String msg = "You have successfully returned '" + book.getTitle() + "'.";
+        if (saved.getPenaltyAmount() != null && saved.getPenaltyAmount() > 0) {
+            msg += " A late penalty of Rs." + saved.getPenaltyAmount() + " has been applied.";
+        }
+        notification.setMessage(msg);
+        notificationRepository.save(notification);
+
         return saved;
     }
 

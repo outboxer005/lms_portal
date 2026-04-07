@@ -1,34 +1,44 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { MDBContainer, MDBBtn, MDBCard, MDBCardBody } from 'mdb-react-ui-kit';
-import { BookOpen, UserPlus, ArrowRight, Menu, X, Home, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { BookOpen, ArrowRight, Home, Eye, EyeOff, AlertCircle, Sparkles, Mail, Lock, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTheme } from '../context/ThemeContext';
 import swal from 'sweetalert';
 
 const Login = () => {
+    const { theme } = useTheme();
     const [credentials, setCredentials] = useState({ username: '', password: '' });
     const { login } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
-    const [navExpanded, setNavExpanded] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
     const [errors, setErrors] = useState({});
+    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+    // Forgot Password States
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+    const [forgotStep, setForgotStep] = useState(1); // 1: Identifier, 2: OTP, 3: New Password
+    const [forgotData, setForgotData] = useState({ identifier: '', otp: '', newPassword: '' });
+    const [forgotLoading, setForgotLoading] = useState(false);
+
+    const isLight = theme === 'light';
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            setMousePosition({ x: e.clientX, y: e.clientY });
+        };
+        window.addEventListener('mousemove', handleMouseMove);
+        return () => window.removeEventListener('mousemove', handleMouseMove);
+    }, []);
 
     const validateForm = () => {
         const newErrors = {};
-        
-        if (!credentials.username.trim()) {
-            newErrors.username = 'Username or email is required';
-        }
-        
-        if (!credentials.password) {
-            newErrors.password = 'Password is required';
-        } else if (credentials.password.length < 6) {
-            newErrors.password = 'Password must be at least 6 characters';
-        }
+        if (!credentials.username.trim()) newErrors.username = 'Username or email is required';
+        if (!credentials.password) newErrors.password = 'Password is required';
+        else if (credentials.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
         
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -37,22 +47,17 @@ const Login = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setCredentials({ ...credentials, [name]: value });
-        // Clear error for this field
-        if (errors[name]) {
-            setErrors({ ...errors, [name]: '' });
-        }
+        if (errors[name]) setErrors({ ...errors, [name]: '' });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
         if (!validateForm()) {
             swal('Validation Error', 'Please fix the errors in the form', 'error');
             return;
         }
-        
-        setLoading(true);
 
+        setLoading(true);
         try {
             const userData = await login(credentials);
             swal('Welcome back!', `Hello, ${userData.username || 'User'}!`, 'success', { button: 'Continue' })
@@ -69,502 +74,419 @@ const Login = () => {
         }
     };
 
+    const handleForgotChange = (e) => {
+        setForgotData({ ...forgotData, [e.target.name]: e.target.value });
+    };
+
+    const handleSendOtp = async (e) => {
+        e.preventDefault();
+        if (!forgotData.identifier.trim()) { swal('Error', 'Please enter your registered Email or ID', 'error'); return; }
+        
+        setForgotLoading(true);
+        try {
+            const res = await fetch('http://localhost:8080/api/auth/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier: forgotData.identifier })
+            }).then(r => r.json());
+
+            if (res.message && res.message.toLowerCase().includes('sent')) {
+                swal('Success', res.message, 'success');
+                setForgotStep(2);
+            } else { swal('Error', res.message || 'Failed to send OTP', 'error'); }
+        } catch (err) { swal('Error', 'Unable to connect to the server', 'error'); } 
+        finally { setForgotLoading(false); }
+    };
+
+    const handleVerifyOtp = async (e) => {
+        e.preventDefault();
+        if (!forgotData.otp.trim()) { swal('Error', 'Please enter the OTP sent to your email', 'error'); return; }
+        setForgotLoading(true);
+        try {
+            const res = await fetch('http://localhost:8080/api/auth/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier: forgotData.identifier, otp: forgotData.otp })
+            }).then(r => r.json());
+
+            if (res.token === 'valid') {
+                swal('Success', 'OTP Verified successfully.', 'success');
+                setForgotStep(3);
+            } else { swal('Error', res.message || 'Invalid OTP', 'error'); }
+        } catch (err) { swal('Error', 'Unable to connect to the server', 'error'); } 
+        finally { setForgotLoading(false); }
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        if (!forgotData.newPassword || forgotData.newPassword.length < 6) { swal('Error', 'Password must be at least 6 characters long', 'error'); return; }
+        setForgotLoading(true);
+        try {
+            const res = await fetch('http://localhost:8080/api/auth/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier: forgotData.identifier, otp: forgotData.otp, newPassword: forgotData.newPassword })
+            }).then(r => r.json());
+
+            if (res.message && res.message.toLowerCase().includes('success')) {
+                swal('Success', 'Your password has been reset successfully. You can now login.', 'success').then(() => {
+                    setShowForgotPassword(false); setForgotStep(1); setForgotData({ identifier: '', otp: '', newPassword: '' });
+                });
+            } else { swal('Error', res.message || 'Failed to reset password', 'error'); }
+        } catch (err) { swal('Error', 'Unable to connect to the server', 'error'); } 
+        finally { setForgotLoading(false); }
+    };
+
+    const inputStyles = (errorSpan) => ({
+        width: '100%',
+        padding: '1rem 3rem',
+        background: isLight ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.4)',
+        border: `2px solid ${errorSpan ? '#ef4444' : isLight ? 'rgba(226, 232, 240, 0.8)' : 'rgba(51, 65, 85, 0.5)'}`,
+        borderRadius: '16px',
+        color: isLight ? '#0f172a' : '#f8fafc',
+        fontSize: '1rem',
+        outline: 'none',
+        transition: 'all 0.3s ease',
+        backdropFilter: 'blur(10px)',
+        boxShadow: isLight ? 'inset 0 2px 4px rgba(0,0,0,0.02)' : 'inset 0 2px 4px rgba(0,0,0,0.2)'
+    });
+
+    const activeInputStyle = {
+        borderColor: '#8b5cf6',
+        boxShadow: `0 0 0 4px rgba(139, 92, 246, 0.15), ${isLight ? 'inset 0 2px 4px rgba(0,0,0,0.02)' : 'inset 0 2px 4px rgba(0,0,0,0.2)'}`,
+        background: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(15, 23, 42, 0.6)'
+    };
+
     return (
-        <div style={{ 
-            background: 'linear-gradient(135deg, var(--bg-body) 0%, var(--gray-100) 50%, var(--gray-200) 100%)', 
-            minHeight: '100vh', 
+        <div style={{
+            minHeight: '100vh',
             width: '100%',
-            color: 'var(--text-main)', 
-            fontFamily: 'Inter, sans-serif', 
-            position: 'relative', 
-            overflow: 'auto',
+            fontFamily: "'Inter', sans-serif",
+            background: isLight ? '#f8fafc' : '#030712',
+            color: isLight ? '#0f172a' : '#f8fafc',
+            position: 'relative',
+            overflow: 'hidden',
             display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'stretch'
         }}>
-            {/* Custom Scrollbar & Mobile */}
-            <style>{`
-                @media (max-width: 768px) { .hide-mobile { display: none !important; } }
-                /* Custom Scrollbar for Webkit browsers (Chrome, Safari, Edge) */
-                ::-webkit-scrollbar {
-                    width: 12px;
-                    height: 12px;
-                }
-                
-                ::-webkit-scrollbar-track {
-                    background: rgba(15, 23, 42, 0.5);
-                    border-radius: 10px;
-                }
-                
-                ::-webkit-scrollbar-thumb {
-                    background: rgba(96, 165, 250, 0.3);
-                    border-radius: 10px;
-                    border: 2px solid rgba(15, 23, 42, 0.5);
-                    transition: background 0.3s ease;
-                }
-                
-                ::-webkit-scrollbar-thumb:hover {
-                    background: rgba(96, 165, 250, 0.5);
-                }
-                
-                ::-webkit-scrollbar-thumb:active {
-                    background: rgba(96, 165, 250, 0.7);
-                }
-                
-                /* Firefox scrollbar */
-                * {
-                    scrollbar-width: thin;
-                    scrollbar-color: rgba(96, 165, 250, 0.3) rgba(15, 23, 42, 0.5);
-                }
-            `}</style>
-            
-            {/* Gradient Background Effects */}
-            <div style={{ 
-                position: 'absolute', 
-                top: '-50%', 
-                right: '-10%', 
-                width: '60%', 
-                height: '60%', 
-                background: 'radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%)',
-                borderRadius: '50%',
-                filter: 'blur(60px)',
-                zIndex: 0
-            }}></div>
-            <div style={{ 
-                position: 'absolute', 
-                bottom: '-30%', 
-                left: '-10%', 
-                width: '50%', 
-                height: '50%', 
-                background: 'radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%)',
-                borderRadius: '50%',
-                filter: 'blur(60px)',
-                zIndex: 0
-            }}></div>
+            {/* Dynamic Mesh Background */}
+            <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                backgroundImage: `
+                    radial-gradient(at 0% 0%, ${isLight ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.2)'} 0px, transparent 50%),
+                    radial-gradient(at 100% 100%, ${isLight ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)'} 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, ${isLight ? 'rgba(236, 72, 153, 0.1)' : 'rgba(236, 72, 153, 0.15)'} 0px, transparent 50%)
+                `,
+                zIndex: 0,
+                pointerEvents: 'none'
+            }} />
 
-            {/* Collapsible Navbar */}
-            <div style={{ position: 'fixed', top: '20px', left: '20px', zIndex: 100 }}>
-                <motion.button
-                    onClick={() => setNavExpanded(!navExpanded)}
-                    style={{
-                        background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--primary-700) 100%)',
-                        backdropFilter: 'blur(20px)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        borderRadius: '50%',
-                        width: '56px',
-                        height: '56px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        color: 'white',
-                        boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
-                        transition: 'all 0.3s ease'
-                    }}
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.95 }}
+            {/* Mouse Tracking Glow (Dark Mode) */}
+            {!isLight && (
+                <div style={{
+                    position: 'absolute',
+                    top: mousePosition.y - 400,
+                    left: mousePosition.x - 400,
+                    width: '800px',
+                    height: '800px',
+                    background: 'radial-gradient(circle, rgba(139, 92, 246, 0.05) 0%, transparent 60%)',
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                }} />
+            )}
+
+             {/* Minimal Nav Link */}
+             <div style={{ position: 'absolute', top: '2rem', left: '2rem', zIndex: 10 }}>
+                <Link to="/" style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '0.75rem 1.25rem',
+                    borderRadius: '50px',
+                    background: isLight ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.5)',
+                    backdropFilter: 'blur(10px)',
+                    border: `1px solid ${isLight ? 'rgba(226, 232, 240, 0.8)' : 'rgba(255, 255, 255, 0.05)'}`,
+                    color: isLight ? '#475569' : '#94a3b8',
+                    textDecoration: 'none',
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = isLight ? '#0f172a' : '#f8fafc'; e.currentTarget.style.transform = 'translateX(-4px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = isLight ? '#475569' : '#94a3b8'; e.currentTarget.style.transform = 'translateX(0)'; }}
                 >
-                    {navExpanded ? <X size={24} /> : <Menu size={24} />}
-                </motion.button>
-
-                <AnimatePresence>
-                    {navExpanded && (
-                        <motion.nav
-                            initial={{ opacity: 0, x: -20, scale: 0.95 }}
-                            animate={{ opacity: 1, x: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: -20, scale: 0.95 }}
-                            transition={{ duration: 0.2 }}
-                            style={{
-                                position: 'absolute',
-                                top: '70px',
-                                left: '0',
-                                background: 'rgba(15, 23, 42, 0.95)',
-                                backdropFilter: 'blur(24px)',
-                                border: '1px solid rgba(255, 255, 255, 0.15)',
-                                borderRadius: '20px',
-                                padding: '1.5rem',
-                                minWidth: '250px',
-                                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)'
-                            }}
-                        >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <Link 
-                                    to="/" 
-                                    style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '12px',
-                                        textDecoration: 'none',
-                                        color: 'white',
-                                        padding: '0.75rem',
-                                        borderRadius: '12px',
-                                        transition: 'all 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                    <Home size={20} />
-                                    <span style={{ fontWeight: '600' }}>Home</span>
-                                </Link>
-
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '12px',
-                                    padding: '0.75rem',
-                                    borderTop: '1px solid rgba(255,255,255,0.1)',
-                                    paddingTop: '1rem',
-                                    marginTop: '0.5rem'
-                                }}>
-                                    <div style={{ color: '#60a5fa', display: 'flex' }}>
-                                        <BookOpen size={24} />
-                                    </div>
-                                    <span style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.02em' }}>LibPortal</span>
-                                </div>
-
-                                <Link 
-                                    to="/register" 
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '8px',
-                                        background: 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)',
-                                        color: 'white',
-                                        padding: '0.75rem 1.5rem',
-                                        borderRadius: '50px',
-                                        fontWeight: '600',
-                                        textDecoration: 'none',
-                                        fontSize: '0.95rem',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.05)';
-                                        e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.5)';
-                                        e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-400) 0%, var(--primary-500) 100%)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1)';
-                                        e.currentTarget.style.boxShadow = '0 4px 14px rgba(59, 130, 246, 0.35)';
-                                        e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)';
-                                    }}
-                                >
-                                    <UserPlus size={18} />
-                                    Register
-                                </Link>
-                            </div>
-                        </motion.nav>
-                    )}
-                </AnimatePresence>
+                    <ArrowRight size={16} style={{ transform: 'rotate(180deg)' }} /> Back to Home
+                </Link>
             </div>
 
-            {/* Split Layout: Image (hidden on mobile) + Login Form */}
-            <div className="hide-mobile" style={{ 
-                flex: 1, 
-                minHeight: '100vh', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                padding: '2rem',
-                background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.9) 100%)',
-                backgroundImage: 'url(https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=800&h=600&fit=crop)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                position: 'relative'
+            {/* Split Layout: Left Presentation (Hidden Mobile), Right Form */}
+            <div className="presentation-side" style={{
+                flex: 1.2,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '4rem',
+                position: 'relative',
+                zIndex: 1,
             }}>
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(15,23,42,0.85) 0%, rgba(30,41,59,0.75) 100%)' }} />
-                <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', color: 'white', maxWidth: '400px' }} className="hide-mobile">
-                    <h3 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '1rem', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>Welcome to LibPortal</h3>
-                    <p style={{ color: '#cbd5e1', fontSize: '1rem', lineHeight: 1.6 }}>Your gateway to digital library management. Browse, borrow, and explore.</p>
-                    <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=320&h=240&fit=crop" alt="Library" style={{ marginTop: '2rem', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)', maxWidth: '100%' }} />
+                <style>{`@media (max-width: 900px) { .presentation-side { display: none !important; } }`}</style>
+                <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '2rem' }}>
+                        <div style={{ 
+                            background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+                            padding: '12px',
+                            borderRadius: '16px',
+                            color: 'white',
+                            boxShadow: '0 8px 20px rgba(139, 92, 246, 0.3)'
+                        }}>
+                            <BookOpen size={28} />
+                        </div>
+                        <span style={{ fontWeight: '800', fontSize: '1.75rem', letterSpacing: '-0.03em' }}>
+                            LibPortal
+                        </span>
+                    </div>
+                </div>
+
+                <div style={{ position: 'relative' }}>
+                    <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8, delay: 0.2 }}
+                    >
+                        <h2 style={{ fontSize: '3rem', fontWeight: '800', lineHeight: 1.1, marginBottom: '1.5rem', letterSpacing: '-0.02em', maxWidth: '500px' }}>
+                            Welcome to the future of learning.
+                        </h2>
+                        <p style={{ color: isLight ? '#64748b' : '#94a3b8', fontSize: '1.25rem', lineHeight: 1.6, maxWidth: '450px' }}>
+                            Log in to manage your resources, track your reading history, and explore thousands of digital assets seamlessly.
+                        </p>
+                    </motion.div>
+                </div>
+
+                <div style={{
+                    display: 'flex', gap: '2rem',
+                    padding: '2rem',
+                    borderRadius: '24px',
+                    background: isLight ? 'rgba(255, 255, 255, 0.5)' : 'rgba(15, 23, 42, 0.4)',
+                    backdropFilter: 'blur(20px)',
+                    border: `1px solid ${isLight ? 'rgba(226, 232, 240, 0.8)' : 'rgba(255, 255, 255, 0.05)'}`,
+                    maxWidth: '500px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <ShieldCheck size={24} color="#10b981" />
+                        <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>Secure Access</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <Sparkles size={24} color="#8b5cf6" />
+                        <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>Personalized</span>
+                    </div>
                 </div>
             </div>
-            <div style={{ 
-                flex: 1, 
-                minHeight: '100vh', 
-                display: 'flex', 
-                alignItems: 'center', 
+
+            {/* Form Side */}
+            <div style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'center',
                 padding: '2rem',
-                position: 'relative',
-                zIndex: 10,
-                background: 'var(--bg-body)'
+                zIndex: 2,
+                position: 'relative'
             }}>
-                <MDBContainer style={{ maxWidth: '520px', width: '100%' }}>
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6 }}
-                        className='w-100'
-                    >
-                        <MDBCard className='shadow-5' style={{ 
-                            background: 'var(--bg-card)', 
-                            backdropFilter: 'blur(24px)', 
-                            border: '2px solid var(--border-color)', 
-                            color: 'var(--text-main)', 
-                            borderRadius: '22px',
-                            padding: '0.75rem'
-                        }}>
-                            <MDBCardBody style={{ padding: '1.6rem 1.5rem' }}>
-                                <div className="text-center mb-3">
-                                    <h2 className="mb-2" style={{ fontSize: '2rem', letterSpacing: '-0.02em', color: 'var(--text-main)', fontWeight: '400' }}>Sign In</h2>
-                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: '400' }}>Enter your credentials to continue</p>
+                <motion.div 
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.6 }}
+                    style={{
+                        width: '100%',
+                        maxWidth: '480px',
+                        background: isLight ? 'rgba(255, 255, 255, 0.8)' : 'rgba(17, 24, 39, 0.6)',
+                        backdropFilter: 'blur(30px)',
+                        '-webkit-backdrop-filter': 'blur(30px)',
+                        borderRadius: '32px',
+                        padding: '3rem',
+                        border: `1px solid ${isLight ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.08)'}`,
+                        boxShadow: isLight ? '0 20px 60px rgba(0,0,0,0.05)' : '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                }}>
+                    <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+                        <h3 style={{ fontSize: '2rem', fontWeight: '800', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+                            {showForgotPassword ? 'Reset Password' : 'Sign In'}
+                        </h3>
+                        <p style={{ color: isLight ? '#64748b' : '#94a3b8', fontSize: '1rem' }}>
+                            {showForgotPassword ? 'Follow the steps to secure your account' : 'Enter your credentials to continue'}
+                        </p>
+                    </div>
+
+                    <AnimatePresence mode="wait">
+                        {showForgotPassword ? (
+                            <motion.div 
+                                key="forgot"
+                                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }}
+                            >
+                                {forgotStep === 1 && (
+                                    <form onSubmit={handleSendOtp}>
+                                        <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                                            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: '1rem', color: isLight ? '#94a3b8' : '#64748b' }}><Mail size={20} /></div>
+                                            <input
+                                                type='text' name="identifier" value={forgotData.identifier} onChange={handleForgotChange} placeholder="Email or Student ID" required
+                                                style={inputStyles(false)}
+                                                onFocus={e => Object.assign(e.target.style, activeInputStyle)}
+                                                onBlur={e => Object.assign(e.target.style, inputStyles(false))}
+                                            />
+                                        </div>
+                                        <button type="submit" disabled={forgotLoading} style={{
+                                            width: '100%', padding: '1.1rem', borderRadius: '16px', border: 'none',
+                                            background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: 'white', fontWeight: '700', fontSize: '1.05rem', cursor: 'pointer',
+                                            boxShadow: '0 10px 25px rgba(59, 130, 246, 0.3)', transition: 'all 0.3s ease'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px rgba(59, 130, 246, 0.4)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.3)'; }}
+                                        >
+                                            {forgotLoading ? 'Sending...' : 'Send OTP via Email'}
+                                        </button>
+                                    </form>
+                                )}
+                                {forgotStep === 2 && (
+                                    <form onSubmit={handleVerifyOtp}>
+                                        <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                                            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: '1rem', color: isLight ? '#94a3b8' : '#64748b' }}><ShieldCheck size={20} /></div>
+                                            <input
+                                                type='text' name="otp" value={forgotData.otp} onChange={handleForgotChange} placeholder="Enter 6-digit OTP" required maxLength={6}
+                                                style={{...inputStyles(false), letterSpacing: '4px', textAlign: 'center', paddingLeft: '1rem'}}
+                                                onFocus={e => Object.assign(e.target.style, activeInputStyle)}
+                                                onBlur={e => Object.assign(e.target.style, inputStyles(false))}
+                                            />
+                                        </div>
+                                        <button type="submit" disabled={forgotLoading} style={{
+                                            width: '100%', padding: '1.1rem', borderRadius: '16px', border: 'none',
+                                            background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', fontWeight: '700', fontSize: '1.05rem', cursor: 'pointer',
+                                            boxShadow: '0 10px 25px rgba(16, 185, 129, 0.3)', transition: 'all 0.3s ease'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px rgba(16, 185, 129, 0.4)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(16, 185, 129, 0.3)'; }}
+                                        >
+                                            {forgotLoading ? 'Verifying...' : 'Verify Secure Code'}
+                                        </button>
+                                    </form>
+                                )}
+                                {forgotStep === 3 && (
+                                    <form onSubmit={handleResetPassword}>
+                                        <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                                            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: '1rem', color: isLight ? '#94a3b8' : '#64748b' }}><Lock size={20} /></div>
+                                            <input
+                                                type='password' name="newPassword" value={forgotData.newPassword} onChange={handleForgotChange} placeholder="Enter New Password" required minLength={6}
+                                                style={inputStyles(false)}
+                                                onFocus={e => Object.assign(e.target.style, activeInputStyle)}
+                                                onBlur={e => Object.assign(e.target.style, inputStyles(false))}
+                                            />
+                                        </div>
+                                        <button type="submit" disabled={forgotLoading} style={{
+                                            width: '100%', padding: '1.1rem', borderRadius: '16px', border: 'none',
+                                            background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: 'white', fontWeight: '700', fontSize: '1.05rem', cursor: 'pointer',
+                                            boxShadow: '0 10px 25px rgba(59, 130, 246, 0.3)', transition: 'all 0.3s ease'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px rgba(59, 130, 246, 0.4)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.3)'; }}
+                                        >
+                                            {forgotLoading ? 'Processing...' : 'Set New Password'}
+                                        </button>
+                                    </form>
+                                )}
+
+                                <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                                    <button type="button" onClick={() => { setShowForgotPassword(false); setForgotStep(1); }}
+                                        style={{ background: 'none', border: 'none', color: isLight ? '#64748b' : '#94a3b8', cursor: 'pointer', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600' }}
+                                        onMouseEnter={e => e.currentTarget.style.color = isLight ? '#0f172a' : 'white'}
+                                        onMouseLeave={e => e.currentTarget.style.color = isLight ? '#64748b' : '#94a3b8'}
+                                    >
+                                        <ArrowRight size={18} style={{ transform: 'rotate(180deg)' }} /> Back to Sign In
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <motion.form 
+                                key="login"
+                                initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}
+                                onSubmit={handleSubmit}
+                            >
+                                {/* Username */}
+                                <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                                    <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: '1rem', color: isLight ? '#94a3b8' : '#64748b', zIndex: 10 }}>
+                                        <Mail size={20} />
+                                    </div>
+                                    <input
+                                        type='text' name="username" value={credentials.username} onChange={handleChange} placeholder="Email or ID" required
+                                        style={inputStyles(errors.username)}
+                                        onFocus={e => Object.assign(e.target.style, activeInputStyle)}
+                                        onBlur={e => Object.assign(e.target.style, inputStyles(errors.username))}
+                                    />
+                                    {errors.username && (
+                                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <AlertCircle size={14} /> {errors.username}
+                                        </motion.div>
+                                    )}
                                 </div>
 
-                                <form onSubmit={handleSubmit}>
-                                    {/* Username Input */}
-                                    <div className="mb-3">
-                                        <label style={{ 
-                                            fontWeight: '400', 
-                                            fontSize: '0.95rem', 
-                                            color: 'var(--text-main)',
-                                            marginBottom: '0.4rem',
-                                            display: 'block'
-                                        }}>
-                                            Enter your ID or Email
-                                        </label>
-                                        <input
-                                            type='text'
-                                            name="username"
-                                            value={credentials.username}
-                                            onChange={handleChange}
-                                            placeholder="Enter your ID or email"
-                                            required
-                                            style={{ 
-                                                width: '100%',
-                                                background: 'var(--bg-input)', 
-                                                border: errors.username ? '2px solid #ef4444' : '2px solid var(--border-color)', 
-                                                height: '44px', 
-                                                borderRadius: '12px', 
-                                                color: 'var(--text-main)',
-                                                padding: '0 1rem',
-                                                fontSize: '0.95rem',
-                                                fontWeight: '400',
-                                                outline: 'none',
-                                                transition: 'all 0.3s ease'
-                                            }}
-                                            onFocus={(e) => {
-                                                e.target.style.borderColor = 'var(--primary-500)';
-                                                e.target.style.boxShadow = '0 0 0 3px rgba(96, 165, 250, 0.2)';
-                                            }}
-                                            onBlur={(e) => {
-                                                e.target.style.borderColor = errors.username ? '#ef4444' : 'var(--border-color)';
-                                                e.target.style.boxShadow = 'none';
-                                            }}
-                                        />
-                                        {errors.username && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: -5 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                style={{ 
-                                                    color: '#fca5a5', 
-                                                    fontSize: '0.8rem', 
-                                                    fontWeight: '400',
-                                                    marginTop: '0.25rem',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.25rem'
-                                                }}
-                                            >
-                                                <AlertCircle size={14} /> {errors.username}
-                                            </motion.div>
-                                        )}
+                                {/* Password */}
+                                <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                                    <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: '1rem', color: isLight ? '#94a3b8' : '#64748b', zIndex: 10 }}>
+                                        <Lock size={20} />
                                     </div>
-
-                                    {/* Password Input */}
-                                    <div className="mb-3">
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                                            <label style={{ fontWeight: '400', fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                                                Password
-                                            </label>
-                                            <Link to="#" style={{ color: 'var(--primary-500)', fontSize: '0.85rem', textDecoration: 'none', fontWeight: '400' }}>
-                                                Forgot password?
-                                            </Link>
-                                        </div>
-                                        <div style={{ position: 'relative' }}>
-                                            <input
-                                                type={showPassword ? 'text' : 'password'}
-                                                name="password"
-                                                value={credentials.password}
-                                                onChange={handleChange}
-                                                required
-                                                style={{ 
-                                                    width: '100%',
-                                                    background: 'var(--bg-input)', 
-                                                    border: errors.password ? '2px solid #ef4444' : '2px solid var(--border-color)', 
-                                                    height: '44px', 
-                                                    borderRadius: '12px', 
-                                                    color: 'var(--text-main)',
-                                                    padding: '0 2.75rem 0 1rem',
-                                                    fontSize: '0.95rem',
-                                                    fontWeight: '400',
-                                                    outline: 'none',
-                                                    transition: 'all 0.3s ease'
-                                                }}
-                                                onFocus={(e) => {
-                                                    e.target.style.borderColor = 'var(--primary-500)';
-                                                    e.target.style.boxShadow = '0 0 0 3px rgba(96, 165, 250, 0.2)';
-                                                }}
-                                                onBlur={(e) => {
-                                                    e.target.style.borderColor = errors.password ? '#ef4444' : 'var(--border-color)';
-                                                    e.target.style.boxShadow = 'none';
-                                                }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(!showPassword)}
-                                                style={{
-                                                    position: 'absolute',
-                                                    right: '0.75rem',
-                                                    top: '50%',
-                                                    transform: 'translateY(-50%)',
-                                                    background: 'rgba(59, 130, 246, 0.1)',
-                                                    border: 'none',
-                                                    borderRadius: '8px',
-                                                    color: 'var(--primary-500)',
-                                                    cursor: 'pointer',
-                                                    padding: '0.5rem',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    transition: 'all 0.2s'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
-                                                    e.currentTarget.style.color = 'var(--primary-400)';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
-                                                    e.currentTarget.style.color = 'var(--primary-500)';
-                                                }}
-                                            >
-                                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                            </button>
-                                        </div>
-                                        {errors.password && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: -5 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                style={{ 
-                                                    color: '#fca5a5', 
-                                                    fontSize: '0.8rem', 
-                                                    fontWeight: '400',
-                                                    marginTop: '0.25rem',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.25rem'
-                                                }}
-                                            >
-                                                <AlertCircle size={14} /> {errors.password}
-                                            </motion.div>
-                                        )}
-                                    </div>
-
-                                    {/* Remember Me */}
-                                    <div className="mb-3">
-                                        <label style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            gap: '0.4rem',
-                                            cursor: 'pointer',
-                                            color: 'var(--text-secondary)',
-                                            fontSize: '0.9rem',
-                                            fontWeight: '400'
-                                        }}>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={rememberMe}
-                                                onChange={(e) => setRememberMe(e.target.checked)}
-                                                style={{
-                                                    width: '14px',
-                                                    height: '14px',
-                                                    cursor: 'pointer',
-                                                    accentColor: '#60a5fa'
-                                                }}
-                                            />
-                                            Remember me
-                                        </label>
-                                    </div>
-
-                                    {/* Sign In Button */}
-                                    <MDBBtn 
-                                        className="w-100 mb-3" 
-                                        size='lg' 
-                                        disabled={loading} 
-                                        type="submit"
-                                        style={{
-                                            background: 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)',
-                                            border: 'none',
-                                            color: 'white',
-                                            fontWeight: '600',
-                                            borderRadius: '50px',
-                                            padding: '0.75rem 1.5rem',
-                                            textTransform: 'none',
-                                            fontSize: '0.95rem',
-                                            boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
-                                            transition: 'all 0.3s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            if (!loading) {
-                                                e.currentTarget.style.transform = 'scale(1.02)';
-                                                e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.5)';
-                                                e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-400) 0%, var(--primary-500) 100%)';
-                                            }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            if (!loading) {
-                                                e.currentTarget.style.transform = 'scale(1)';
-                                                e.currentTarget.style.boxShadow = '0 4px 14px rgba(59, 130, 246, 0.4)';
-                                                e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)';
-                                            }
-                                        }}
+                                    <input
+                                        type={showPassword ? 'text' : 'password'} name="password" value={credentials.password} onChange={handleChange} placeholder="Password" required
+                                        style={inputStyles(errors.password)}
+                                        onFocus={e => Object.assign(e.target.style, activeInputStyle)}
+                                        onBlur={e => Object.assign(e.target.style, inputStyles(errors.password))}
+                                    />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                                        style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: isLight ? '#94a3b8' : '#64748b', cursor: 'pointer', display: 'flex', zIndex: 10 }}
+                                        onMouseEnter={e => e.currentTarget.style.color = '#8b5cf6'}
+                                        onMouseLeave={e => e.currentTarget.style.color = isLight ? '#94a3b8' : '#64748b'}
                                     >
-                                        {loading ? (
-                                            <span>Logging in...</span>
-                                        ) : (
-                                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                                Sign In <ArrowRight size={16} />
-                                            </span>
-                                        )}
-                                    </MDBBtn>
+                                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                    {errors.password && (
+                                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <AlertCircle size={14} /> {errors.password}
+                                        </motion.div>
+                                    )}
+                                </div>
 
-                                    {/* Create Account Link - styled as secondary button */}
-                                    <p className="text-center mb-0" style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: '400' }}>
-                                        Don't have an account?{' '}
-                                        <Link
-                                            to="/register"
-                                            style={{
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '0.35rem',
-                                                color: 'white',
-                                                textDecoration: 'none',
-                                                fontWeight: '600',
-                                                padding: '0.5rem 1rem',
-                                                borderRadius: '50px',
-                                                background: 'linear-gradient(135deg, var(--primary-400) 0%, var(--primary-500) 100%)',
-                                                boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)',
-                                                transition: 'all 0.2s ease'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)';
-                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
-                                                e.currentTarget.style.transform = 'scale(1.02)';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-400) 0%, var(--primary-500) 100%)';
-                                                e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
-                                                e.currentTarget.style.transform = 'scale(1)';
-                                            }}
-                                        >
-                                            Create account
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: isLight ? '#64748b' : '#94a3b8', fontSize: '0.95rem', fontWeight: '500' }}>
+                                        <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                                            style={{ width: '16px', height: '16px', accentColor: '#8b5cf6', cursor: 'pointer' }}
+                                        />
+                                        Remember me
+                                    </label>
+                                    <button type="button" onClick={() => setShowForgotPassword(true)}
+                                        style={{ color: '#8b5cf6', fontSize: '0.95rem', fontWeight: '600', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                    >
+                                        Forgot password?
+                                    </button>
+                                </div>
+
+                                <button type="submit" disabled={loading} style={{
+                                    width: '100%', padding: '1.2rem', borderRadius: '16px', border: 'none',
+                                    background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: 'white', fontWeight: '700', fontSize: '1.1rem', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                    boxShadow: '0 10px 25px rgba(59, 130, 246, 0.3)', transition: 'all 0.3s ease'
+                                }}
+                                onMouseEnter={e => { if(!loading){ e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 30px rgba(59, 130, 246, 0.4)'; } }}
+                                onMouseLeave={e => { if(!loading){ e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.3)'; } }}
+                                >
+                                    {loading ? 'Authenticating...' : <><Sparkles size={18} /> Sign In to Portal</>}
+                                </button>
+
+                                <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
+                                    <p style={{ color: isLight ? '#64748b' : '#94a3b8', fontSize: '1rem', fontWeight: '500' }}>
+                                        New to LibPortal? {' '}
+                                        <Link to="/register" style={{ color: '#8b5cf6', fontWeight: '700', textDecoration: 'none' }}>
+                                            Create an account
                                         </Link>
                                     </p>
-                                </form>
-                            </MDBCardBody>
-                        </MDBCard>
-                    </motion.div>
-                </MDBContainer>
+                                </div>
+                            </motion.form>
+                        )}
+                    </AnimatePresence>
+                </motion.div>
             </div>
         </div>
     );

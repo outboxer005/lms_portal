@@ -42,10 +42,13 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
-                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/forgot-password", "/api/auth/verify-otp",
+                                "/api/auth/reset-password")
+                        .permitAll()
                         .requestMatchers("/api/auth/validate").permitAll()
                         .requestMatchers("/api/student/register/**").permitAll()
                         .requestMatchers("/api/student/registration/**").permitAll()
+                        .requestMatchers("/api/chat/guest").permitAll()
                         .requestMatchers("/error").permitAll()
 
                         // H2 Console
@@ -54,7 +57,8 @@ public class SecurityConfig {
                         // Admin only endpoints
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-                        // Shared staff/admin endpoints (keep out of /api/admin/** so STAFF can use them)
+                        // Shared staff/admin endpoints (keep out of /api/admin/** so STAFF can use
+                        // them)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "STAFF")
 
                         // Library endpoints - method-level security handles fine-grained access
@@ -64,6 +68,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/membership/**").authenticated()
                         .requestMatchers("/api/library/book-requests/**").authenticated()
                         .requestMatchers("/api/library/**").authenticated()
+
+                        // Payment endpoints
+                        .requestMatchers("/api/payments/**").authenticated()
 
                         // Student endpoints
                         .requestMatchers("/api/student/dashboard").hasRole("STUDENT")

@@ -86,6 +86,12 @@ public class MembershipService {
         return membershipRepository.findByStudentIdAndStatus(studentId, MembershipStatus.ACTIVE);
     }
 
+    // Returns most recent membership regardless of status (for pending payment detection)
+    public Optional<StudentMembership> getLatestMembership(Long studentId) {
+        List<StudentMembership> all = membershipRepository.findLatestByStudentId(studentId);
+        return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
+    }
+
     @Transactional
     public StudentMembership assignMembership(Long studentId, Long planId, Long assignedById, String notes,
             LocalDate endDate) {
@@ -94,29 +100,62 @@ public class MembershipService {
 
         MembershipPlan plan = getPlanById(planId);
 
-        // Expire any existing active membership
-        membershipRepository.findByStudentIdAndStatus(studentId, MembershipStatus.ACTIVE)
-                .ifPresent(existing -> {
-                    existing.setStatus(MembershipStatus.EXPIRED);
-                    membershipRepository.save(existing);
-                });
-
         User assignedBy = userRepository.findById(assignedById)
                 .orElseThrow(() -> new RuntimeException("Staff/Admin not found"));
+
+        return createMembershipAssignment(student, plan, assignedBy, notes, endDate);
+        }
+
+        @Transactional
+        public StudentMembership selfAssignMembership(Long studentId, Long planId, String notes, LocalDate endDate) {
+        User student = userRepository.findById(studentId)
+            .orElseThrow(() -> new RuntimeException("Student not found: " + studentId));
+        MembershipPlan plan = getPlanById(planId);
+
+        if (Boolean.FALSE.equals(plan.getActive())) {
+            throw new RuntimeException("Selected membership plan is not active");
+        }
+
+        // Self-assignment is recorded as assigned by the same student account.
+        return createMembershipAssignment(student, plan, student, notes, endDate);
+        }
+
+        private StudentMembership createMembershipAssignment(User student, MembershipPlan plan, User assignedBy, String notes,
+            LocalDate endDate) {
+        // Expire previous non-expired memberships so only one current plan can remain.
+        membershipRepository.findByStudentId(student.getId())
+            .stream()
+            .filter(existing -> existing.getStatus() != MembershipStatus.EXPIRED)
+            .forEach(existing -> {
+                existing.setStatus(MembershipStatus.EXPIRED);
+                membershipRepository.save(existing);
+            });
 
         StudentMembership membership = new StudentMembership();
         membership.setStudent(student);
         membership.setPlan(plan);
         membership.setStartDate(LocalDate.now());
         membership.setEndDate(endDate);
-        membership.setStatus(MembershipStatus.ACTIVE);
+        // Set status as ACTIVE only if monthly fee is 0, otherwise SUSPENDED until payment
+        membership.setStatus(plan.getMonthlyFee() > 0 ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE);
         membership.setAssignedBy(assignedBy);
         membership.setNotes(notes);
+        membership.setIsPaymentCompleted(plan.getMonthlyFee() <= 0);
+        membership.setAutoRenewalEnabled(false);
 
         StudentMembership saved = membershipRepository.save(membership);
         // Notify student (async)
         emailService.sendMembershipAssignedEmail(saved);
         return saved;
+    }
+
+    @Transactional
+    public StudentMembership activateMembershipAfterPayment(Long membershipId) {
+        StudentMembership membership = membershipRepository.findById(membershipId)
+                .orElseThrow(() -> new RuntimeException("Membership not found"));
+        membership.setStatus(MembershipStatus.ACTIVE);
+        membership.setIsPaymentCompleted(true);
+        return membershipRepository.save(membership);
     }
 
     @Transactional

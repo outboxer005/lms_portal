@@ -24,4 +24,6 @@ public interface StudentMembershipRepository extends JpaRepository<StudentMember
     List<StudentMembership> findLatestByStudentId(Long studentId);
 
     boolean existsByStudentIdAndStatus(Long studentId, MembershipStatus status);
+
+    List<StudentMembership> findByStudentIdAndIsPaymentCompletedFalse(Long studentId);
 }

@@ -134,7 +134,9 @@ export const membershipAPI = {
   getStudentMemberships: (studentId) => api.get(`/membership/student/${studentId}`),
   getActiveMembership: (studentId) => api.get(`/membership/student/${studentId}/active`),
   getMyMembership: () => api.get('/membership/my'),
+  getMyLatestMembership: () => api.get('/membership/my/latest'),
   assignMembership: (data) => api.post('/membership/assign', data),
+  selfAssignMembership: (data) => api.post('/membership/self-assign', data),
   revokeMembership: (membershipId) => api.post(`/membership/${membershipId}/revoke`),
   getStudentAllowance: (studentId) => api.get(`/membership/student/${studentId}/allowance`),
 };
@@ -146,6 +148,26 @@ export const bookRequestAPI = {
   getAllRequests: () => api.get('/library/book-requests'),
   approveRequest: (id, note) => api.post(`/library/book-requests/${id}/approve`, { note }),
   rejectRequest: (id, note) => api.post(`/library/book-requests/${id}/reject`, { note })
+};
+
+export const notificationAPI = {
+  getAll: () => api.get('/notifications'),
+  getUnread: () => api.get('/notifications/unread'),
+  getUnreadCount: () => api.get('/notifications/unread-count'),
+  markAsRead: (id) => api.post(`/notifications/${id}/read`),
+  markAllAsRead: () => api.post('/notifications/mark-all-read'),
+};
+
+export const paymentAPI = {
+  createOrder: (data) => api.post('/payments/create-order', data),
+  verifyPayment: (data) => api.post('/payments/verify', data),
+  getPaymentHistory: () => api.get('/payments/history'),
+  getUnpaidFines: () => api.get('/payments/unpaid-fines'),
+  getUnpaidMemberships: () => api.get('/payments/unpaid-memberships'),
+};
+
+export const adminSystemAPI = {
+  autoComplete: () => api.post('/admin/system/auto-complete'),
 };
 
 export default api;

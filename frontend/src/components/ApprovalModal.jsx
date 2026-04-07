@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
 import { X, User, Mail, Phone, MapPin, GraduationCap, Briefcase, FileText, CheckCircle, XCircle, Download, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { adminAPI } from '../services/api';
 import toast from 'react-hot-toast';
 
-const ApprovalModal = ({ registration, onClose, onApprove, onReject, token }) => {
+const ApprovalModal = ({ registration, onClose, onApprove, onReject }) => {
     const [activeTab, setActiveTab] = useState('personal');
     const [idCardUrl, setIdCardUrl] = useState(null);
     const [loadingImage, setLoadingImage] = useState(false);
@@ -356,7 +355,7 @@ const WorkTab = ({ data }) => (
     </div>
 );
 
-const DocumentTab = ({ idCardUrl, loading, registrationId, token }) => {
+const DocumentTab = ({ idCardUrl, loading, registrationId }) => {
     const handleDownload = async () => {
         try {
             const response = await adminAPI.downloadDocument(registrationId);
@@ -430,7 +429,7 @@ const DocumentTab = ({ idCardUrl, loading, registrationId, token }) => {
 
 // ============= REUSABLE COMPONENTS =============
 
-const InfoField = ({ label, value, icon: Icon, highlight, compact, fullWidth, style = {} }) => (
+const InfoField = ({ label, value, icon: Icon, highlight, compact, style = {} }) => (
     <div style={{ ...style }}>
         <div style={{ 
             color: '#94a3b8', 

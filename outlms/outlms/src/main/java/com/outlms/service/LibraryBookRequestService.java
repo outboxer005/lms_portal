@@ -7,6 +7,7 @@ import com.outlms.entity.StudentMembership;
 import com.outlms.entity.User;
 import com.outlms.repository.BookRepository;
 import com.outlms.repository.LibraryBookRequestRepository;
+import com.outlms.repository.NotificationRepository;
 import com.outlms.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class LibraryBookRequestService {
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
     private final MembershipService membershipService;
+    private final NotificationRepository notificationRepository;
 
     public List<LibraryBookRequest> getAllRequests() {
         return requestRepository.findAllByOrderByCreatedAtDesc();
@@ -70,7 +72,20 @@ public class LibraryBookRequestService {
         request.setStudentNotes(notes);
         request.setStatus(RequestStatus.PENDING);
 
-        return requestRepository.save(request);
+        LibraryBookRequest savedRequest = requestRepository.save(request);
+
+        // Send in-app notification to all staff
+        List<User> staffMembers = userRepository.findByRoleAndActiveTrue(User.Role.STAFF);
+        for (User staff : staffMembers) {
+            com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+            notification.setUser(staff);
+            notification.setTitle("New Book Request");
+            notification.setMessage("Student " + student.getFirstName() + " " + student.getLastName() + 
+                                  " has requested the book '" + book.getTitle() + "'.");
+            notificationRepository.save(notification);
+        }
+
+        return savedRequest;
     }
 
     @Transactional
@@ -88,8 +103,15 @@ public class LibraryBookRequestService {
         request.setStaffNote(staffNote);
         request.setHandledBy(staff);
         request.setHandledAt(LocalDateTime.now());
+        LibraryBookRequest savedRequest = requestRepository.save(request);
 
-        return requestRepository.save(request);
+        com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+        notification.setUser(request.getStudent());
+        notification.setTitle("Book Request Approved");
+        notification.setMessage("Your request for '" + request.getBook().getTitle() + "' has been approved.");
+        notificationRepository.save(notification);
+
+        return savedRequest;
     }
 
     @Transactional
@@ -107,7 +129,15 @@ public class LibraryBookRequestService {
         request.setStaffNote(staffNote);
         request.setHandledBy(staff);
         request.setHandledAt(LocalDateTime.now());
+        LibraryBookRequest savedRequest = requestRepository.save(request);
 
-        return requestRepository.save(request);
+        com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+        notification.setUser(request.getStudent());
+        notification.setTitle("Book Request Rejected");
+        notification.setMessage(
+                "Your request for '" + request.getBook().getTitle() + "' has been rejected. Reason: " + staffNote);
+        notificationRepository.save(notification);
+
+        return savedRequest;
     }
 }

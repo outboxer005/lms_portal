@@ -3,6 +3,7 @@ package com.outlms.service;
 import com.outlms.entity.StudentRegistration;
 import com.outlms.entity.StudentRegistration.RegistrationStatus;
 import com.outlms.entity.User;
+import com.outlms.repository.NotificationRepository;
 import com.outlms.repository.StudentRegistrationRepository;
 import com.outlms.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class ApprovalService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationRepository notificationRepository;
 
     private static final String CHAR_LOWER = "abcdefghijklmnopqrstuvwxyz";
     private static final String CHAR_UPPER = CHAR_LOWER.toUpperCase();
@@ -66,6 +68,13 @@ public class ApprovalService {
 
         // Send approval email with credentials
         emailService.sendApprovalEmail(registration, username, temporaryPassword);
+
+        // Send web notification
+        com.outlms.entity.Notification notification = new com.outlms.entity.Notification();
+        notification.setUser(studentUser);
+        notification.setTitle("Registration Approved");
+        notification.setMessage("Welcome! Your registration has been approved.");
+        notificationRepository.save(notification);
 
         return registration;
     }
@@ -113,18 +122,19 @@ public class ApprovalService {
      */
     private String generateUsername(StudentRegistration registration) {
         String role = registration.getRole() != null ? registration.getRole().toUpperCase() : "STUDENT";
-        
+
         if ("STAFF".equals(role)) {
             // Generate VULIB ID for staff
             return generateStaffId();
         } else {
             // Use provided Student ID for students
             String studentId = registration.getPersonalDetails().getStudentId();
-            
+
             if (studentId != null && !studentId.trim().isEmpty()) {
                 // Check if student ID already exists
                 if (userRepository.existsByUsername(studentId)) {
-                    throw new RuntimeException("Student ID '" + studentId + "' is already in use. Please contact admin.");
+                    throw new RuntimeException(
+                            "Student ID '" + studentId + "' is already in use. Please contact admin.");
                 }
                 return studentId.trim();
             } else {
@@ -132,7 +142,7 @@ public class ApprovalService {
             }
         }
     }
-    
+
     /**
      * Generate unique Staff ID (VULB ID) in one DB query.
      * Format: VULB{NNNN} where NNNN is zero-padded 4-digit sequential number.
@@ -145,7 +155,8 @@ public class ApprovalService {
             if (u != null && u.length() >= 5 && u.startsWith("VULB")) {
                 try {
                     nextNum = Integer.parseInt(u.substring(4).trim()) + 1;
-                } catch (NumberFormatException ignored) { }
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
         if (nextNum > 9999) {

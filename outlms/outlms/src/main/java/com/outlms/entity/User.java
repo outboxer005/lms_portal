@@ -54,7 +54,16 @@ public class User {
     @Column(name = "is_active")
     private Boolean active = true;
 
-    /** True when user was created by admin approval; they must change password on first login */
+    @Column(name = "reset_otp", length = 6)
+    private String resetOtp;
+
+    @Column(name = "reset_otp_expiry")
+    private LocalDateTime resetOtpExpiry;
+
+    /**
+     * True when user was created by admin approval; they must change password on
+     * first login
+     */
     @Column(name = "must_change_password")
     private Boolean mustChangePassword = false;
 

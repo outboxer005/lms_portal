@@ -1317,19 +1317,46 @@ export const MembershipManagement = ({ initialSection = 'assign' }) => {
                             </h2>
                             {memberships.length === 0 ? <EmptyState icon={Users} message='No memberships assigned yet' /> : (
                                 <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', minWidth: 700 }}>
+                                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', minWidth: 800 }}>
                                         <thead><tr style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                                            {['Student', 'Plan', 'Allowance', 'Start', 'End', 'Status', 'Action'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                                            {['Student', 'Plan', 'Allowance', 'Start', 'End', 'Status', 'Payment', 'Action'].map(h => <th key={h} style={thStyle}>{h}</th>)}
                                         </tr></thead>
                                         <tbody>{memberships.map(m => (
                                             <tr key={m.id} style={{ background: 'var(--accent-subtle)' }}>
                                                 <td style={tdStyle}><span style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.88rem' }}>{m.student?.firstName} {m.student?.lastName}</span><br /><span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>@{m.student?.username}</span></td>
-                                                <td style={tdStyle}><span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', background: `${tierColors[m.plan?.tier] || '#60a5fa'}20`, color: tierColors[m.plan?.tier] || '#60a5fa' }}>{m.plan?.name}</span></td>
+                                                <td style={tdStyle}>
+                                                    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', background: `${tierColors[m.plan?.tier] || '#60a5fa'}20`, color: tierColors[m.plan?.tier] || '#60a5fa' }}>{m.plan?.name}</span>
+                                                    {m.plan?.monthlyFee > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>₹{m.plan.monthlyFee}/mo</div>}
+                                                </td>
                                                 <td style={tdStyle}><span style={{ fontWeight: '700', color: 'var(--text-main)' }}>{m.plan?.bookAllowance} books</span></td>
                                                 <td style={tdStyle}><span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{m.startDate}</span></td>
                                                 <td style={tdStyle}><span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{m.endDate || '—'}</span></td>
-                                                <td style={tdStyle}><span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.73rem', fontWeight: '700', background: m.status === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : m.status === 'EXPIRED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: m.status === 'ACTIVE' ? '#10b981' : m.status === 'EXPIRED' ? '#ef4444' : '#f59e0b' }}>{m.status}</span></td>
-                                                <td style={tdStyle}>{m.status === 'ACTIVE' && <button onClick={() => handleRevoke(m)} style={{ padding: '0.35rem 0.8rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>Revoke</button>}</td>
+                                                <td style={tdStyle}>
+                                                    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.73rem', fontWeight: '700',
+                                                        background: m.status === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : m.status === 'EXPIRED' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                                                        color: m.status === 'ACTIVE' ? '#10b981' : m.status === 'EXPIRED' ? '#ef4444' : '#f59e0b' }}>
+                                                        {m.status === 'SUSPENDED' && !m.isPaymentCompleted ? 'PAYMENT DUE' : m.status}
+                                                    </span>
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    {m.plan?.monthlyFee > 0 ? (
+                                                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: '700',
+                                                            background: m.isPaymentCompleted ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+                                                            color: m.isPaymentCompleted ? '#10b981' : '#f59e0b' }}>
+                                                            {m.isPaymentCompleted ? 'PAID' : 'PENDING'}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Free</span>
+                                                    )}
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    {m.status === 'ACTIVE' && (
+                                                        <button onClick={() => handleRevoke(m)} style={{ padding: '0.35rem 0.8rem', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>Revoke</button>
+                                                    )}
+                                                    {m.status === 'SUSPENDED' && !m.isPaymentCompleted && (
+                                                        <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: '600' }}>Awaiting Payment</span>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}</tbody>
                                     </table>

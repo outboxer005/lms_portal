@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -24,9 +24,11 @@ import {
     ClipboardList,
     Bell,
 } from 'lucide-react';
+import NotificationDropdown from './NotificationDropdown';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'motion/react';
+import ChatWidget from './ChatWidget';
 
 const DashboardLayout = ({ children, role }) => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -51,7 +53,13 @@ const DashboardLayout = ({ children, role }) => {
                     { icon: RotateCcw, label: 'Issue / Return Books', path: '/admin/dashboard?tab=issue-return' },
                     { icon: UserPlus, label: 'Manage Members', path: '/admin/dashboard?tab=members' },
                     { icon: CreditCard, label: 'Membership Plans', path: '/admin/dashboard?tab=plans' },
-                    { icon: ClipboardList, label: 'Book Requests', path: '/admin/dashboard?tab=book-requests' },
+                    {
+                        icon: ClipboardList, label: 'Applications', children: [
+                            { label: 'Student Registrations', path: '/admin/dashboard?tab=requests-students' },
+                            { label: 'Staff Registrations', path: '/admin/dashboard?tab=requests-staff' },
+                            { label: 'Book Requests', path: '/admin/dashboard?tab=book-requests' }
+                        ]
+                    },
                     { icon: User, label: 'Profile', path: '/admin/dashboard?tab=profile' },
                 ];
             case 'STAFF':
@@ -61,7 +69,7 @@ const DashboardLayout = ({ children, role }) => {
                     { icon: RotateCcw, label: 'Issue / Return Books', path: '/staff/dashboard?tab=issue-return' },
                     { icon: UserPlus, label: 'Manage Members', path: '/staff/dashboard?tab=members' },
                     { icon: CreditCard, label: 'Membership Plans', path: '/staff/dashboard?tab=plans' },
-                    { icon: ClipboardList, label: 'Book Requests', path: '/staff/dashboard?tab=book-requests' },
+                    { icon: ClipboardList, label: 'Applications', path: '/staff/dashboard?tab=book-requests' },
                     { icon: User, label: 'Profile', path: '/staff/dashboard?tab=profile' },
                 ];
             case 'STUDENT':
@@ -70,8 +78,9 @@ const DashboardLayout = ({ children, role }) => {
                     { icon: LayoutDashboard, label: 'Dashboard', path: '/student/dashboard' },
                     { icon: BookOpen, label: 'Browse Books', path: '/student/dashboard?tab=library' },
                     { icon: Library, label: 'My Books', path: '/student/dashboard?tab=mybooks' },
-                    { icon: PlusCircle, label: 'Request Book', path: '/student/dashboard?tab=request-book' },
+                    { icon: PlusCircle, label: 'Applications', path: '/student/dashboard?tab=request-book' },
                     { icon: CreditCard, label: 'My Membership', path: '/student/dashboard?tab=membership' },
+                    { icon: CreditCard, label: 'Payments', path: '/student/dashboard?tab=payments' },
                     { icon: User, label: 'Profile', path: '/student/profile' },
                 ];
         }
@@ -436,25 +445,7 @@ const DashboardLayout = ({ children, role }) => {
                             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                         </button>
                         {/* Notification Bell */}
-                        <button style={{
-                            background: 'var(--accent-subtle)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '12px',
-                            width: '44px',
-                            height: '44px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--text-main)',
-                            cursor: 'pointer',
-                            position: 'relative',
-                            transition: 'all 0.2s'
-                        }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-input)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-subtle)'}
-                        >
-                            <Bell size={20} />
-                        </button>
+                        <NotificationDropdown />
 
                         {/* User Avatar */}
                         <div style={{
@@ -487,6 +478,7 @@ const DashboardLayout = ({ children, role }) => {
                 }}>
                     {children}
                 </div>
+                <ChatWidget />
             </main>
         </div>
     );

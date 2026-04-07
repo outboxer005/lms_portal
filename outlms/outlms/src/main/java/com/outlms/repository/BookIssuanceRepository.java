@@ -35,4 +35,9 @@ public interface BookIssuanceRepository extends JpaRepository<BookIssuance, Long
 
     @Query("SELECT COUNT(bi) FROM BookIssuance bi WHERE bi.student.id = :studentId AND bi.status = 'ISSUED'")
     long countActiveByStudent(@Param("studentId") Long studentId);
+
+    @Query("SELECT bi FROM BookIssuance bi WHERE bi.student.id = :studentId AND bi.penaltyAmount > :amount AND (bi.isPenaltyPaid = false OR bi.isPenaltyPaid IS NULL) AND bi.status = 'RETURNED'")
+    List<BookIssuance> findUnpaidFinesByStudent(@Param("studentId") Long studentId, @Param("amount") Double amount);
+
+    List<BookIssuance> findByStudentIdAndPenaltyAmountGreaterThanAndIsPenaltyPaidFalse(Long studentId, Double amount);
 }

@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "book_issuances")
@@ -60,6 +61,12 @@ public class BookIssuance {
     @Column(name = "penalty_amount")
     private Double penaltyAmount = 0.0;
 
+    @Column(name = "is_penalty_paid")
+    private Boolean isPenaltyPaid = false;
+
+    @Column(name = "penalty_paid_date")
+    private LocalDateTime penaltyPaidDate;
+
     @Column(name = "notes")
     private String notes;
 
@@ -84,5 +91,13 @@ public class BookIssuance {
         ISSUED,
         RETURNED,
         OVERDUE
+    }
+
+    public Double getPenaltyAmount() {
+        if (status == IssuanceStatus.ISSUED && dueDate != null && LocalDate.now().isAfter(dueDate)) {
+            long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+            return daysLate * 5.0;
+        }
+        return penaltyAmount != null ? penaltyAmount : 0.0;
     }
 }

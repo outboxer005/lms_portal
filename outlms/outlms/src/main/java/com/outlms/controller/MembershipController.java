@@ -91,6 +91,15 @@ public class MembershipController {
         return m.map(ResponseEntity::ok).orElse(ResponseEntity.noContent().build());
     }
 
+    /** Student checks latest membership including SUSPENDED (pending payment) */
+    @GetMapping("/my/latest")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<?> getMyLatestMembership(Authentication auth) {
+        User student = getUserFromAuth(auth);
+        Optional<StudentMembership> m = membershipService.getLatestMembership(student.getId());
+        return m.map(ResponseEntity::ok).orElse(ResponseEntity.noContent().build());
+    }
+
     @PostMapping("/assign")
     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
     public ResponseEntity<StudentMembership> assignMembership(
@@ -101,6 +110,20 @@ public class MembershipController {
                 request.studentId,
                 request.planId,
                 staff.getId(),
+                request.notes,
+                request.endDate);
+        return ResponseEntity.ok(membership);
+    }
+
+    @PostMapping("/self-assign")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<StudentMembership> selfAssignMembership(
+            @RequestBody SelfAssignMembershipRequest request,
+            Authentication auth) {
+        User student = getUserFromAuth(auth);
+        StudentMembership membership = membershipService.selfAssignMembership(
+                student.getId(),
+                request.planId,
                 request.notes,
                 request.endDate);
         return ResponseEntity.ok(membership);
@@ -127,6 +150,12 @@ public class MembershipController {
     // DTO
     public static class AssignMembershipRequest {
         public Long studentId;
+        public Long planId;
+        public String notes;
+        public LocalDate endDate;
+    }
+
+    public static class SelfAssignMembershipRequest {
         public Long planId;
         public String notes;
         public LocalDate endDate;

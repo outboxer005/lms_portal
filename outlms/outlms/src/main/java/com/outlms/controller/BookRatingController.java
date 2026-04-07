@@ -23,7 +23,6 @@ public class BookRatingController {
     private final BookRatingService ratingService;
     private final UserService userService;
 
-    // ── Student: submit or update a rating ──────────────────────────────────
 
     @PostMapping("/ratings")
     @PreAuthorize("hasRole('STUDENT')")
@@ -33,9 +32,6 @@ public class BookRatingController {
         User student = getUser(auth);
         return ResponseEntity.ok(ratingService.rateBook(request, student));
     }
-
-    // ── Student: get their own rating for a book ─────────────────────────────
-
     @GetMapping("/ratings/my/{bookId}")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<BookRating> getMyRating(

@@ -50,6 +50,15 @@ public class StudentMembership {
     @Column(name = "notes", length = 500)
     private String notes;
 
+    @Column(name = "is_payment_completed")
+    private Boolean isPaymentCompleted = false;
+
+    @Column(name = "payment_date")
+    private LocalDateTime paymentDate;
+
+    @Column(name = "auto_renewal_enabled")
+    private Boolean autoRenewalEnabled = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

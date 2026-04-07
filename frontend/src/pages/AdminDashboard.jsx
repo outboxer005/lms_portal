@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import DashboardLayout from '../components/DashboardLayout';
 import ApprovalModal from '../components/ApprovalModal';
 import { useAuth } from '../context/AuthContext';
-import { adminAPI, authAPI } from '../services/api';
+import { adminAPI, authAPI, adminSystemAPI } from '../services/api';
 import { ManageBooks, IssueReturnTab, BookRequestsTab, MembershipManagement, ManagePlansTab } from './StaffDashboard';
 import { SharedProfileTab } from './StudentDashboard';
 import { Users, BookOpen, FileText, CheckCircle, XCircle, Bell, Send, Filter, Search, Trash2, Eye, EyeOff, UserCheck, UserX, TrendingUp, Calendar, Activity, Package, User, Lock } from 'lucide-react';
@@ -136,6 +136,19 @@ const AdminOverview = ({ stats, token }) => {
         }
     };
 
+    const handleAutoComplete = async () => {
+        if (!token) return;
+        try {
+            const res = await adminSystemAPI.autoComplete();
+            toast.success('System Auto-Complete Run Successfully!');
+            swal('System Auto-Complete', res.data || 'Action executed successfully.', 'success');
+            fetchDashboardStats();
+            fetchRecentRegistrations();
+        } catch (error) {
+            swal('Auto-Complete failed', error.response?.data?.message || 'Failed to complete system actions.', 'error');
+        }
+    };
+
     const barData = [
         { name: 'Students', count: activeStudents.length, fill: CHART_COLORS[0] },
         { name: 'Staff', count: activeStaff.length, fill: CHART_COLORS[1] },
@@ -215,9 +228,7 @@ const AdminOverview = ({ stats, token }) => {
                         <Link to="/admin/dashboard?tab=requests-staff" style={{ textDecoration: 'none' }}>
                             <ActionButton icon={Users} label="Add Staff Member" />
                         </Link>
-                        <Link to="/admin/dashboard?tab=books" style={{ textDecoration: 'none' }}>
-                            <ActionButton icon={BookOpen} label="Add New Book" />
-                        </Link>
+                        <ActionButton icon={CheckCircle} color="var(--primary-500)" label="Auto-Complete Actions" onClick={handleAutoComplete} />
                     </div>
                 </GlassCard>
             </div>
